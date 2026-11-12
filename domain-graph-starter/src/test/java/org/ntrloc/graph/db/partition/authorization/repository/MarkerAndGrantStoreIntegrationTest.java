@@ -11,6 +11,7 @@ import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -40,6 +41,9 @@ class MarkerAndGrantStoreIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @Autowired
     private ManualMarkerAssignmentService markerAssignmentService;
@@ -92,7 +96,7 @@ class MarkerAndGrantStoreIntegrationTest extends AbstractIntegrationTest {
     @Test
     void ensureMarkerGrant_isIdempotent() {
         var marker = markerStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("arm-" + UUID.randomUUID());
 
         UUID first = grantStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
         UUID second = grantStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
@@ -106,7 +110,7 @@ class MarkerAndGrantStoreIntegrationTest extends AbstractIntegrationTest {
     @Test
     void findMarkerGrant_findsAnEnsuredGrant() {
         var marker = markerStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("arm-" + UUID.randomUUID());
         UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
         assertThat(grantStore.findMarkerGrant(marker.id(), "USER_GROUP", group.id())).contains(grantId);
@@ -115,7 +119,7 @@ class MarkerAndGrantStoreIntegrationTest extends AbstractIntegrationTest {
     @Test
     void setItemPermissions_persistsTheFlags() {
         var marker = markerStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("arm-" + UUID.randomUUID());
         UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
         grantStore.setItemPermissions(grantId, true, false);
@@ -129,7 +133,7 @@ class MarkerAndGrantStoreIntegrationTest extends AbstractIntegrationTest {
     @Test
     void grantPropertyAccess_upsertsOnConflict() {
         var marker = markerStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("arm-" + UUID.randomUUID());
         UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
         grantStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
@@ -148,7 +152,7 @@ class MarkerAndGrantStoreIntegrationTest extends AbstractIntegrationTest {
     @Test
     void grantLinkPerspectiveAccess_upsertsOnConflict() {
         var marker = markerStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("arm-" + UUID.randomUUID());
         UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
         grantStore.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);
@@ -166,7 +170,7 @@ class MarkerAndGrantStoreIntegrationTest extends AbstractIntegrationTest {
     @Test
     void grantLinkPropertyAccess_persists() {
         var marker = markerStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("arm-" + UUID.randomUUID());
         UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
         grantStore.grantLinkPropertyAccess(grantId, fixture.rolePropertyId(), true, true);
@@ -181,7 +185,7 @@ class MarkerAndGrantStoreIntegrationTest extends AbstractIntegrationTest {
     @Test
     void deleteMarkerGrant_cascadesToChildTables() {
         var marker = markerStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("arm-" + UUID.randomUUID());
         UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
         grantStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
         grantStore.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);

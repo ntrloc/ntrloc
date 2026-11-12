@@ -14,6 +14,7 @@ import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.ntrloc.graph.draft.DraftService;
 import org.ntrloc.graph.principal.InternalPrincipalResolver;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +35,9 @@ class AccessUiTest extends AbstractUiIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @Autowired
     private AccessService accessService;
@@ -78,7 +82,7 @@ class AccessUiTest extends AbstractUiIntegrationTest {
     }
 
     private UUID newGroup(String name) {
-        return userStore.createUserGroup(name + " " + tag).id();
+        return userGroupStore.createUserGroup(name + " " + tag).id();
     }
 
     private void reload() {
@@ -162,10 +166,10 @@ class AccessUiTest extends AbstractUiIntegrationTest {
         access.select(user.displayName()).detailTab("Group membership");
 
         access.tick("Joinable " + tag);
-        access.await().until(d -> userStore.getUserGroupIdsForUser(user.id()).contains(group));
+        access.await().until(d -> userGroupStore.getUserGroupIdsForUser(user.id()).contains(group));
 
         access.tick("Joinable " + tag);
-        access.await().until(d -> !userStore.getUserGroupIdsForUser(user.id()).contains(group));
+        access.await().until(d -> !userGroupStore.getUserGroupIdsForUser(user.id()).contains(group));
     }
 
     @Test
@@ -178,14 +182,14 @@ class AccessUiTest extends AbstractUiIntegrationTest {
 
         access.click("Edit").type("Name", "Moved " + tag).chooseParent("Parent " + tag).click("Save");
         access.await().until(d -> access.heading().equals("Moved " + tag));
-        assertThat(userStore.findUserGroupById(group).orElseThrow().name()).isEqualTo("Moved " + tag);
-        assertThat(userStore.findUserGroupById(group).orElseThrow().parentId()).isEqualTo(parent);
+        assertThat(userGroupStore.findUserGroupById(group).orElseThrow().name()).isEqualTo("Moved " + tag);
+        assertThat(userGroupStore.findUserGroupById(group).orElseThrow().parentId()).isEqualTo(parent);
 
         access.choose("Add member", user.displayName());
         access.await().until(d -> access.rows().contains(user.displayName()));
         access.rowAction("Remove " + user.displayName());
         access.await().until(d -> !access.rows().contains(user.displayName()));
-        assertThat(userStore.getUserGroupIdsForUser(user.id())).doesNotContain(group);
+        assertThat(userGroupStore.getUserGroupIdsForUser(user.id())).doesNotContain(group);
     }
 
     @Test
@@ -198,13 +202,13 @@ class AccessUiTest extends AbstractUiIntegrationTest {
         access.type("Name", "Added " + tag).dialogButton("Create").awaitDialogClosed();
 
         access.await().until(d -> access.heading().equals("Added " + tag));
-        assertThat(userStore.findUserGroupByName("Added " + tag).orElseThrow().parentId()).isEqualTo(parent);
+        assertThat(userGroupStore.findUserGroupByName("Added " + tag).orElseThrow().parentId()).isEqualTo(parent);
     }
 
     @Test
     void deletingAGroup_saysWhichSubgroupsGoWithIt_andDeletesThemAndTheirGrants() {
         UUID parent = newGroup("Doomed");
-        UUID child = userStore.createUserGroup("Doomed child " + tag, parent).id();
+        UUID child = userGroupStore.createUserGroup("Doomed child " + tag, parent).id();
         accessService.setPermission("USER_GROUP", child, Permission.itemType(thingTypeId, "create"), true);
         reload();
         access.section("Groups").select("Doomed " + tag).click("Delete");
@@ -213,7 +217,7 @@ class AccessUiTest extends AbstractUiIntegrationTest {
         access.dialogButton("Delete").awaitDialogClosed();
 
         access.await().until(d -> !access.listed().contains("Doomed " + tag) && !access.listed().contains("Doomed child " + tag));
-        assertThat(userStore.findUserGroupById(child)).isEmpty();
+        assertThat(userGroupStore.findUserGroupById(child)).isEmpty();
         assertThat(grants.getPermissions("USER_GROUP", child)).isEmpty();
     }
 
@@ -234,7 +238,7 @@ class AccessUiTest extends AbstractUiIntegrationTest {
     void grantingAGroup_isSeenOnItsMembers_asThroughTheGroup() {
         UUID group = newGroup("Granted");
         var user = newUser("Inherits");
-        userStore.addUserToUserGroup(user.id(), group);
+        userGroupStore.addUserToUserGroup(user.id(), group);
         reload();
         access.section("Groups").select("Granted " + tag).detailTab("Permission grants");
 

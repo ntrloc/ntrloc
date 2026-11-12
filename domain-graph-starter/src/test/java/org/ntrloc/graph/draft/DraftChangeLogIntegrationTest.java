@@ -9,6 +9,7 @@ import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.changelog.ChangeEntries.Entry;
 import org.ntrloc.graph.db.partition.changelog.ChangeLog;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -41,6 +42,9 @@ class DraftChangeLogIntegrationTest extends AbstractIntegrationTest {
     private UserStore userStore;
 
     @Autowired
+    private UserGroupStore userGroupStore;
+
+    @Autowired
     private CoordinatorTestDomainInitializer fixture;
 
     private UUID draftId;
@@ -52,7 +56,7 @@ class DraftChangeLogIntegrationTest extends AbstractIntegrationTest {
         discardOpenDrafts();
         draftId = UUID.fromString((String) post("/api/drafts", Map.of("name", "Draft log test")).expectStatus().isCreated()
                 .expectBody(Map.class).returnResult().getResponseBody().get("id"));
-        group = userStore.createUserGroup("draft-log-" + UUID.randomUUID()).id();
+        group = userGroupStore.createUserGroup("draft-log-" + UUID.randomUUID()).id();
     }
 
     @AfterEach
@@ -122,10 +126,10 @@ class DraftChangeLogIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void reconciling_isLogged() {
-        UUID parent = userStore.createUserGroup("parent-" + UUID.randomUUID()).id();
-        userStore.setParent(group, parent);
+        UUID parent = userGroupStore.createUserGroup("parent-" + UUID.randomUUID()).id();
+        userGroupStore.setParent(group, parent);
         setInDraft(createProducts(), true);
-        userStore.setParent(group, userStore.createUserGroup("new-parent-" + UUID.randomUUID()).id());
+        userGroupStore.setParent(group, userGroupStore.createUserGroup("new-parent-" + UUID.randomUUID()).id());
 
         post("/api/drafts/" + draftId + "/reconcile", Map.of("principal", Map.of("kind", "group", "id", group),
                 "permission", body(createProducts()), "resolution", "KEEP")).expectStatus().isNoContent();

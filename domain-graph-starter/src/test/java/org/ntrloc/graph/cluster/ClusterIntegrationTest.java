@@ -14,6 +14,8 @@ import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
+import org.ntrloc.graph.db.partition.security.UserService;
 import org.ntrloc.graph.security.KeycloakContainers;
 import org.ntrloc.graph.security.OidcProviderService;
 import org.ntrloc.graph.security.SamlProviderService;
@@ -144,6 +146,24 @@ class ClusterIntegrationTest {
                 await().atMost(PROPAGATION).untilAsserted(() -> assertThat(schemaAs(b, "/api/schema", carolsToken)).contains("AclTestPublicDoc"));
             } finally {
                 changePermission(a.method(HttpMethod.DELETE), carol, publicDoc);
+            }
+            await().atMost(PROPAGATION).untilAsserted(() -> assertThat(schemaAs(b, "/api/schema", carolsToken)).doesNotContain("AclTestPublicDoc"));
+        }
+
+        @Test
+        @DisplayName("a group membership changed on one node applies on the other at once")
+        void membershipChangeReachesTheOtherNode() {
+            UUID carol = nodeA.getBean(UserStore.class).findUserByEmail("carol@example.com").orElseThrow().id();
+            UUID viewers = nodeA.getBean(UserGroupStore.class).findUserGroupByName("viewers").orElseThrow().id();
+            String carolsToken = tokenFor("carol@example.com");
+            // Carol is now cached on node B, without viewers, whose grants include AclTestPublicDoc.
+            assertThat(schemaAs(b, "/api/schema", carolsToken)).doesNotContain("AclTestPublicDoc");
+
+            nodeA.getBean(UserService.class).addMember(carol, viewers);
+            try {
+                await().atMost(PROPAGATION).untilAsserted(() -> assertThat(schemaAs(b, "/api/schema", carolsToken)).contains("AclTestPublicDoc"));
+            } finally {
+                nodeA.getBean(UserService.class).removeMember(carol, viewers);
             }
             await().atMost(PROPAGATION).untilAsserted(() -> assertThat(schemaAs(b, "/api/schema", carolsToken)).doesNotContain("AclTestPublicDoc"));
         }

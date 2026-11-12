@@ -23,6 +23,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitDefin
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ImplementTraitMutation;
 import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -65,6 +66,9 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @Autowired
     private DefaultUserGroupInitializer defaultUserGroupInitializer;
@@ -371,7 +375,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         // alice/bob/carol/root were at boot, so joining explicitly is required to pick up
         // Vehicle's still-intact default read grant at all.
         var restrictedUser = userStore.createUser("Restricted", "restricted-" + UUID.randomUUID() + "@example.com", false);
-        userStore.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
+        userGroupStore.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
 
         UUID vehicleItemId = createItem(vehicleName);
         createItem(carName);
@@ -463,7 +467,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         UUID vehicleItemId = createItem(vehicleName);
 
         var restrictedUser = userStore.createUser("Restricted", "restricted-" + UUID.randomUUID() + "@example.com", false);
-        userStore.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
+        userGroupStore.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
         NtrlocPrincipal restrictedPrincipal = TestPrincipals.of(restrictedUser.id(), "Restricted", restrictedUser.email(), Set.of(), false);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->

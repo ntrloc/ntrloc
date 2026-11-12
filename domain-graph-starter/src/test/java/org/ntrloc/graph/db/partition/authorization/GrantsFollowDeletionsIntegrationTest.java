@@ -13,6 +13,7 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.AddPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -34,6 +35,9 @@ class GrantsFollowDeletionsIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @Autowired
     private AccessService accessService;
@@ -77,7 +81,7 @@ class GrantsFollowDeletionsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void deletingAGroup_deletesItsGrants() {
-        UUID group = userStore.createUserGroup("deleted-" + UUID.randomUUID()).id();
+        UUID group = userGroupStore.createUserGroup("deleted-" + UUID.randomUUID()).id();
         accessService.setPermission("USER_GROUP", group, createProducts(), true);
         accessService.setPermission("USER_GROUP", group, readItems(newMarker()), true);
 
@@ -89,28 +93,28 @@ class GrantsFollowDeletionsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void deletingAGroupWithSubgroups_isRefused_andKeepsEverything() {
-        UUID parent = userStore.createUserGroup("parent-" + UUID.randomUUID()).id();
-        UUID child = userStore.createUserGroup("child-" + UUID.randomUUID(), parent).id();
+        UUID parent = userGroupStore.createUserGroup("parent-" + UUID.randomUUID()).id();
+        UUID child = userGroupStore.createUserGroup("child-" + UUID.randomUUID(), parent).id();
         accessService.setPermission("USER_GROUP", child, createProducts(), true);
 
         deleteGroup(parent, false).expectStatus().isEqualTo(409);
 
-        assertThat(userStore.findUserGroupById(parent)).isPresent();
+        assertThat(userGroupStore.findUserGroupById(parent)).isPresent();
         assertThat(grants.getPermissions("USER_GROUP", child)).containsExactly(createProducts());
     }
 
     @Test
     void forcingIt_deletesTheSubgroups_andAllTheirGrants() {
-        UUID parent = userStore.createUserGroup("parent-" + UUID.randomUUID()).id();
-        UUID child = userStore.createUserGroup("child-" + UUID.randomUUID(), parent).id();
-        UUID grandchild = userStore.createUserGroup("grandchild-" + UUID.randomUUID(), child).id();
+        UUID parent = userGroupStore.createUserGroup("parent-" + UUID.randomUUID()).id();
+        UUID child = userGroupStore.createUserGroup("child-" + UUID.randomUUID(), parent).id();
+        UUID grandchild = userGroupStore.createUserGroup("grandchild-" + UUID.randomUUID(), child).id();
         accessService.setPermission("USER_GROUP", parent, createProducts(), true);
         accessService.setPermission("USER_GROUP", grandchild, readItems(newMarker()), true);
 
         deleteGroup(parent, true).expectStatus().isNoContent();
 
-        assertThat(userStore.findUserGroupById(child)).isEmpty();
-        assertThat(userStore.findUserGroupById(grandchild)).isEmpty();
+        assertThat(userGroupStore.findUserGroupById(child)).isEmpty();
+        assertThat(userGroupStore.findUserGroupById(grandchild)).isEmpty();
         assertThat(grantRows(parent) + grantRows(grandchild)).isZero();
         assertThat(grants.getPermissions("USER_GROUP", grandchild)).isEmpty();
     }
@@ -137,7 +141,7 @@ class GrantsFollowDeletionsIntegrationTest extends AbstractIntegrationTest {
                 .flatMap(item -> item.properties().stream())
                 .filter(p -> p.name().equals(name))
                 .findFirst().orElseThrow().id();
-        UUID group = userStore.createUserGroup("property-grants-" + UUID.randomUUID()).id();
+        UUID group = userGroupStore.createUserGroup("property-grants-" + UUID.randomUUID()).id();
         Permission readProperty = Permission.forMarker(newMarker(), Permission.AREA_PROPERTY, property, "read");
         accessService.setPermission("USER_GROUP", group, readProperty, true);
         assertThat(grants.getPermissions("USER_GROUP", group)).contains(readProperty);

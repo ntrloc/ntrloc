@@ -8,6 +8,7 @@ import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.partition.authorization.AccessService;
 import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -30,6 +31,9 @@ class DraftGrantsIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @Autowired
     private AccessService accessService;
@@ -75,7 +79,7 @@ class DraftGrantsIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID newGroup() {
-        return userStore.createUserGroup("draft-grants-" + UUID.randomUUID()).id();
+        return userGroupStore.createUserGroup("draft-grants-" + UUID.randomUUID()).id();
     }
 
     private UUID newMarker() {

@@ -9,6 +9,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminLinkView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -53,11 +54,13 @@ public class GrantsApi {
     private final MarkerStoreReader markerReader;
     private final SchemaService schemaService;
     private final UserStore userStore;
+    private final UserGroupStore userGroupStore;
 
-    public GrantsApi(MarkerStoreReader markerReader, SchemaService schemaService, UserStore userStore) {
+    public GrantsApi(MarkerStoreReader markerReader, SchemaService schemaService, UserStore userStore, UserGroupStore userGroupStore) {
         this.markerReader = markerReader;
         this.schemaService = schemaService;
         this.userStore = userStore;
+        this.userGroupStore = userGroupStore;
     }
 
     /** Each named principal's own permissions, in the order asked for. */
@@ -104,7 +107,7 @@ public class GrantsApi {
     public boolean isGrantable(String principalType, UUID principalId, Permission permission, GrantTargets targets) {
         boolean principalExists = "USER".equals(principalType)
                 ? userStore.findUserById(principalId).isPresent()
-                : userStore.findUserGroupById(principalId).isPresent();
+                : userGroupStore.findUserGroupById(principalId).isPresent();
         return principalExists && grantable(permission, targets);
     }
 
@@ -187,7 +190,7 @@ public class GrantsApi {
     public void requireExists(PrincipalRef principal) {
         boolean exists = "user".equals(principal.kind())
                 ? userStore.findUserById(principal.id()).isPresent()
-                : userStore.findUserGroupById(principal.id()).isPresent();
+                : userGroupStore.findUserGroupById(principal.id()).isPresent();
         if (!exists) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such " + principal.kind());
     }
 

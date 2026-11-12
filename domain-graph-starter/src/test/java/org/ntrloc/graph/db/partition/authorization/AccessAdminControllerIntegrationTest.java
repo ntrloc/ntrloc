@@ -5,6 +5,7 @@ import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.authorization.repository.GrantStore;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -37,6 +38,9 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private UserStore userStore;
 
     @Autowired
+    private UserGroupStore userGroupStore;
+
+    @Autowired
     private GrantStore grantStore;
 
     @Autowired
@@ -51,7 +55,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID viewersUserGroupId() {
-        return userStore.findUserGroupByName("viewers").orElseThrow().id();
+        return userGroupStore.findUserGroupByName("viewers").orElseThrow().id();
     }
 
     private UUID aliceId() {
@@ -93,7 +97,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void getUserGroupPermissions_groupsMultipleOperationsOnTheSameItemTypeIntoOneEntry() {
-        var group = userStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
         grantStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
         grantStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:create");
 
@@ -115,7 +119,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void grantUserGroupPermission_addsAGrantThatWasNotPreviouslyThere() {
-        var group = userStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
         assertThat(grantStore.findItemTypeGrant(publicDocId(), "USER_GROUP", group.id(), "item-type:read")).isEmpty();
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
@@ -140,7 +144,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void grantUserGroupPermission_withoutAnItemTypeId_returnsBadRequest() {
-        var group = userStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -152,7 +156,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void grantUserGroupPermission_withAnUnrecognizedOperation_returnsBadRequest() {
-        var group = userStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -164,7 +168,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void revokeUserGroupPermission_removesAnExistingGrant() {
-        var group = userStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
         grantStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
@@ -191,7 +195,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void revokeUserGroupPermission_withoutAnItemTypeId_returnsBadRequest() {
-        var group = userStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri("/api/admin/user-groups/" + group.id() + "/permissions")
@@ -204,7 +208,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void revokeUserGroupPermission_forAGrantThatDoesNotExist_returnsNotFound() {
-        var group = userStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri("/api/admin/user-groups/" + group.id() + "/permissions")
@@ -233,9 +237,9 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void getUserEffectivePermissions_groupsMultipleOperationsOnTheSameItemTypeIntoOneEntry() {
-        var group = userStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
         var user = userStore.createUser("Multi-Op User", "access-admin-test-" + UUID.randomUUID() + "@example.com", false);
-        userStore.addUserToUserGroup(user.id(), group.id());
+        userGroupStore.addUserToUserGroup(user.id(), group.id());
         grantStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
         grantStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:create");
 

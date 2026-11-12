@@ -4,6 +4,7 @@ import org.ntrloc.graph.db.partition.authorization.GrantsApi;
 import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -55,12 +56,14 @@ public class GrantDependencyTracker {
     }
 
     private final UserStore userStore;
+    private final UserGroupStore userGroupStore;
     private final GrantStoreReader liveGrants;
     private final GrantsApi grantsApi;
     private final JdbcClient jdbcClient;
 
-    public GrantDependencyTracker(UserStore userStore, GrantStoreReader liveGrants, GrantsApi grantsApi, JdbcClient jdbcClient) {
+    public GrantDependencyTracker(UserStore userStore, UserGroupStore userGroupStore, GrantStoreReader liveGrants, GrantsApi grantsApi, JdbcClient jdbcClient) {
         this.userStore = userStore;
+        this.userGroupStore = userGroupStore;
         this.liveGrants = liveGrants;
         this.grantsApi = grantsApi;
         this.jdbcClient = jdbcClient;
@@ -69,7 +72,7 @@ public class GrantDependencyTracker {
     /** What the override depends on now, counted from `since`, the draft's starting position. */
     public GrantDependencies capture(String principalType, UUID principalId, Permission permission, long since) {
         List<UUID> path = pathOf(principalType, principalId);
-        List<UUID> below = isUser(principalType) ? List.of() : userStore.subtreeOf(principalId).stream().filter(id -> !id.equals(principalId)).toList();
+        List<UUID> below = isUser(principalType) ? List.of() : userGroupStore.subtreeOf(principalId).stream().filter(id -> !id.equals(principalId)).toList();
         return new GrantDependencies(since,
                 touches(isUser(principalType) ? Role.USER : Role.GROUP, List.of(principalId), since),
                 touches(Role.PATH, path, since),
@@ -91,7 +94,7 @@ public class GrantDependencyTracker {
 
     private List<Reason> check(DraftGrantOverride o, GrantsApi.GrantTargets targets) {
         boolean user = isUser(o.principalType());
-        boolean exists = user ? userStore.findUserById(o.principalId()).isPresent() : userStore.findUserGroupById(o.principalId()).isPresent();
+        boolean exists = user ? userStore.findUserById(o.principalId()).isPresent() : userGroupStore.findUserGroupById(o.principalId()).isPresent();
         if (!exists) return List.of(new Reason(Kind.PRINCIPAL_DELETED, o.principalId(), null));
         if (!grantsApi.isGrantable(o.principalType(), o.principalId(), o.permission(), targets)) return List.of(new Reason(Kind.TARGET_DELETED, null, null));
 
@@ -116,8 +119,8 @@ public class GrantDependencyTracker {
         List<Reason> reasons = new ArrayList<>();
         recorded.forEach((id, count) -> {
             if (!count.equals(now.get(id))) {
-                var group = userStore.findUserGroupById(id);
-                reasons.add(new Reason(group.isPresent() ? Kind.GROUP_CHANGED : Kind.GROUP_DELETED, id, group.map(UserStore.UserGroupRow::name).orElse(null)));
+                var group = userGroupStore.findUserGroupById(id);
+                reasons.add(new Reason(group.isPresent() ? Kind.GROUP_CHANGED : Kind.GROUP_DELETED, id, group.map(UserGroupStore.UserGroupRow::name).orElse(null)));
             }
         });
         return reasons;
@@ -140,7 +143,7 @@ public class GrantDependencyTracker {
 
     // The groups the override's effect also runs through: a group's ancestors; a user's groups and theirs.
     private List<UUID> pathOf(String principalType, UUID principalId) {
-        return isUser(principalType) ? userStore.getUserGroupIdsForUser(principalId).stream().sorted().toList() : userStore.ancestorsOf(principalId);
+        return isUser(principalType) ? userGroupStore.getUserGroupIdsForUser(principalId).stream().sorted().toList() : userGroupStore.ancestorsOf(principalId);
     }
 
     private boolean inherited(List<UUID> path, Permission permission) {

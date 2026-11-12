@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -32,6 +33,9 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private UserStore userStore;
 
     @Autowired
+    private UserGroupStore userGroupStore;
+
+    @Autowired
     private DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     @SuppressWarnings("unchecked")
@@ -49,9 +53,9 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void listUserGroups_asAdmin_includesMemberCounts() {
-        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("group-" + UUID.randomUUID());
         var member = userStore.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
-        userStore.addUserToUserGroup(member.id(), group.id());
+        userGroupStore.addUserToUserGroup(member.id(), group.id());
 
         List<Map<String, Object>> groups = getAsRoot("/api/admin/user-groups");
 
@@ -83,7 +87,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .jsonPath("$.name").isEqualTo(name)
                 .jsonPath("$.memberCount").isEqualTo(0);
 
-        assertThat(userStore.findUserGroupByName(name)).isPresent();
+        assertThat(userGroupStore.findUserGroupByName(name)).isPresent();
     }
 
     @Test
@@ -99,7 +103,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createUserGroup_withANameThatAlreadyExists_returnsConflict() {
         String name = "group-" + UUID.randomUUID();
-        userStore.createUserGroup(name);
+        userGroupStore.createUserGroup(name);
 
         webTestClient.post().uri("/api/admin/user-groups")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -113,7 +117,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void updateUserGroup_asAdmin_persistsTheNewName() {
-        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("group-" + UUID.randomUUID());
         String newName = "renamed-" + UUID.randomUUID();
 
         webTestClient.put().uri("/api/admin/user-groups/" + group.id())
@@ -125,7 +129,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .expectBody()
                 .jsonPath("$.name").isEqualTo(newName);
 
-        assertThat(userStore.findUserGroupById(group.id())).isPresent().get()
+        assertThat(userGroupStore.findUserGroupById(group.id())).isPresent().get()
                 .satisfies(g -> assertThat(g.name()).isEqualTo(newName));
     }
 
@@ -141,7 +145,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void updateUserGroup_withABlankName_returnsBadRequest() {
-        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("group-" + UUID.randomUUID());
 
         webTestClient.put().uri("/api/admin/user-groups/" + group.id())
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -155,14 +159,14 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void deleteUserGroup_asAdmin_removesIt() {
-        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("group-" + UUID.randomUUID());
 
         webTestClient.delete().uri("/api/admin/user-groups/" + group.id())
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isNoContent();
 
-        assertThat(userStore.findUserGroupById(group.id())).isEmpty();
+        assertThat(userGroupStore.findUserGroupById(group.id())).isEmpty();
     }
 
     @Test
@@ -187,9 +191,9 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void listMembers_asAdmin_returnsEveryMember() {
-        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("group-" + UUID.randomUUID());
         var member = userStore.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
-        userStore.addUserToUserGroup(member.id(), group.id());
+        userGroupStore.addUserToUserGroup(member.id(), group.id());
 
         List<Map<String, Object>> members = getAsRoot("/api/admin/user-groups/" + group.id() + "/members");
 
@@ -206,7 +210,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void addMember_asAdmin_addsTheUserToTheUserGroup() {
-        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("group-" + UUID.randomUUID());
         var user = userStore.createUser("New Member", "user-" + UUID.randomUUID() + "@example.com", false);
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/members")
@@ -216,7 +220,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().isNoContent();
 
-        assertThat(userStore.getUserGroupIdsForUser(user.id())).contains(group.id());
+        assertThat(userGroupStore.getUserGroupIdsForUser(user.id())).contains(group.id());
     }
 
     @Test
@@ -233,21 +237,21 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void removeMember_asAdmin_removesTheUserFromTheUserGroup() {
-        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("group-" + UUID.randomUUID());
         var user = userStore.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
-        userStore.addUserToUserGroup(user.id(), group.id());
+        userGroupStore.addUserToUserGroup(user.id(), group.id());
 
         webTestClient.delete().uri("/api/admin/user-groups/" + group.id() + "/members/" + user.id())
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isNoContent();
 
-        assertThat(userStore.getUserGroupIdsForUser(user.id())).doesNotContain(group.id());
+        assertThat(userGroupStore.getUserGroupIdsForUser(user.id())).doesNotContain(group.id());
     }
 
     @Test
     void removeMember_asNonAdmin_isForbidden() {
-        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("group-" + UUID.randomUUID());
         var user = userStore.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
 
         webTestClient.delete().uri("/api/admin/user-groups/" + group.id() + "/members/" + user.id())

@@ -184,8 +184,10 @@ class AccessPage {
 
     // --- Permission grants ---
 
+    // Waits for the card: the tab loads what can be granted, and every grant, before it shows any.
     private WebElement card(String itemType) {
-        WebElement card = detail().findElement(By.xpath(".//collapsible-card[.//span[@class='collapsible-card-title' and normalize-space()='" + itemType + "']]"));
+        By cardOf = By.xpath(".//collapsible-card[.//span[@class='collapsible-card-title' and normalize-space()='" + itemType + "']]");
+        WebElement card = await().until(d -> detail().findElements(cardOf).stream().findFirst().orElse(null));
         if (card.getAttribute("data-expanded") == null) {
             card.findElement(By.cssSelector(".collapsible-card-toggle")).click();
         }

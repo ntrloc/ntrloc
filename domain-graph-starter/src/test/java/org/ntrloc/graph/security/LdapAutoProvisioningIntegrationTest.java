@@ -3,6 +3,7 @@ package org.ntrloc.graph.security;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseCookie;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -24,6 +25,9 @@ class LdapAutoProvisioningIntegrationTest extends AbstractLdapIntegrationTest {
     @Autowired
     private UserStore userStore;
 
+    @Autowired
+    private UserGroupStore userGroupStore;
+
     @Test
     void aFirstTimeLdapUser_getsANonAdminAccountInTheDefaultGroup_withNoLocalCredentials() {
         ResponseCookie session = logIn("new.user", LDAP_PASSWORD);
@@ -33,7 +37,7 @@ class LdapAutoProvisioningIntegrationTest extends AbstractLdapIntegrationTest {
                 .containsEntry("displayName", "New Directory User")
                 .containsEntry("isAdmin", false);
         var account = userStore.findUserByEmail("new.user@example.org").orElseThrow();
-        assertThat(userStore.getUserGroupsForUser(account.id())).extracting(g -> g.name()).contains("everyone");
+        assertThat(userGroupStore.getUserGroupsForUser(account.id())).extracting(g -> g.name()).contains("everyone");
         assertThat(userStore.findCredentialsByUserId(account.id())).isEmpty();
         getAdminPage(session).expectStatus().isForbidden();
     }

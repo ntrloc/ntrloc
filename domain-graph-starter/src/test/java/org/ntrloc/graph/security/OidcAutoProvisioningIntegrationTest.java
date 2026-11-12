@@ -3,6 +3,7 @@ package org.ntrloc.graph.security;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -23,6 +24,9 @@ class OidcAutoProvisioningIntegrationTest extends AbstractOidcIntegrationTest {
     @Autowired
     private UserStore userStore;
 
+    @Autowired
+    private UserGroupStore userGroupStore;
+
     @Test
     void aFirstTimeOidcUser_getsANonAdminAccountInTheDefaultGroup_withNoLocalCredentials() {
         String session = logIn("new.user");
@@ -32,7 +36,7 @@ class OidcAutoProvisioningIntegrationTest extends AbstractOidcIntegrationTest {
                 .containsEntry("displayName", "New Person")
                 .containsEntry("isAdmin", false);
         var account = userStore.findUserByEmail("new.user@example.org").orElseThrow();
-        assertThat(userStore.getUserGroupsForUser(account.id())).extracting(g -> g.name()).contains("everyone");
+        assertThat(userGroupStore.getUserGroupsForUser(account.id())).extracting(g -> g.name()).contains("everyone");
         assertThat(userStore.findCredentialsByUserId(account.id())).isEmpty();
         getAdminPage(session).expectStatus().isForbidden();
     }

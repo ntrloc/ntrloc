@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -28,13 +29,16 @@ class GrantsAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private UserStore userStore;
 
     @Autowired
+    private UserGroupStore userGroupStore;
+
+    @Autowired
     private AccessService accessService;
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
 
     private UUID newGroup() {
-        return userStore.createUserGroup("grants-api-" + UUID.randomUUID()).id();
+        return userGroupStore.createUserGroup("grants-api-" + UUID.randomUUID()).id();
     }
 
     private UUID newMarker() {

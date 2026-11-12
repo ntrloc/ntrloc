@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -26,6 +27,9 @@ class DraftModeIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     private String draftId;
 
@@ -84,7 +88,7 @@ class DraftModeIntegrationTest extends AbstractIntegrationTest {
     @Test
     void anInvitedNonAdmin_stillCantUseTheAdminApi() {
         get("/api/drafts/" + draftId + "/admin/grants/targets", INVITED).expectStatus().isForbidden();
-        UUID viewers = userStore.findUserGroupByName("viewers").orElseThrow().id();
+        UUID viewers = userGroupStore.findUserGroupByName("viewers").orElseThrow().id();
         webTestClient.put().uri("/api/drafts/" + draftId + "/admin/grants").header(HttpHeaders.AUTHORIZATION, bearerTokenFor(INVITED))
                 .bodyValue(Map.of("principal", Map.of("kind", "group", "id", viewers),
                         "permission", Map.of("kind", "itemType", "itemTypeId", UUID.randomUUID(), "op", "read"), "value", true))

@@ -7,6 +7,7 @@ import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.partition.authorization.repository.GrantStore;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerStore;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Map;
@@ -30,6 +31,9 @@ class GrantStoreLookupIntegrationTest extends AbstractIntegrationTest {
     private UserStore userStore;
 
     @Autowired
+    private UserGroupStore userGroupStore;
+
+    @Autowired
     private CoordinatorTestDomainInitializer fixture;
 
     private UUID createMarker() {
@@ -42,7 +46,7 @@ class GrantStoreLookupIntegrationTest extends AbstractIntegrationTest {
         UUID groupMarker = createMarker();
         UUID ungrantedMarker = createMarker();
         var user = userStore.createUser("User", "acm-" + UUID.randomUUID() + "@example.com", false);
-        var group = userStore.createUserGroup("acm-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("acm-" + UUID.randomUUID());
 
         grantStore.setItemPermissions(grantStore.ensureMarkerGrant(directMarker, "USER", user.id()), true, false);
         grantStore.setItemPermissions(grantStore.ensureMarkerGrant(groupMarker, "USER_GROUP", group.id()), true, false);
@@ -133,7 +137,7 @@ class GrantStoreLookupIntegrationTest extends AbstractIntegrationTest {
     @Test
     void groupMembershipChangeAlone_needsNoRebuild_membershipResolvedAtReadTime() {
         UUID marker = createMarker();
-        var group = userStore.createUserGroup("acm-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("acm-" + UUID.randomUUID());
         grantStore.setItemPermissions(grantStore.ensureMarkerGrant(marker, "USER_GROUP", group.id()), true, false);
 
         // Joining the group happens strictly after the grant above -- no grant or revoke fires
@@ -141,7 +145,7 @@ class GrantStoreLookupIntegrationTest extends AbstractIntegrationTest {
         // correctly, it's proof group membership is consulted at union-time (read time), not baked
         // into what's cached -- exactly the design point this table shape was chosen for.
         var user = userStore.createUser("User", "acm-" + UUID.randomUUID() + "@example.com", false);
-        userStore.addUserToUserGroup(user.id(), group.id());
+        userGroupStore.addUserToUserGroup(user.id(), group.id());
 
         assertThat(grantStore.getGrantedItemReadMarkerIds(user.id(), Set.of(group.id()))).contains(marker);
     }

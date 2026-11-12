@@ -15,6 +15,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerStoreReader.MarkerRow;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
@@ -79,6 +80,9 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     private UserStore userStore;
 
     @Autowired
+    private UserGroupStore userGroupStore;
+
+    @Autowired
     private DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     @Autowired
@@ -127,7 +131,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     private NtrlocPrincipal newUserInEveryoneUserGroup() {
         var user = userStore.createUser("Restricted", "pcf-" + UUID.randomUUID() + "@example.com", false);
         UUID everyoneUserGroupId = defaultUserGroupInitializer.getDefaultUserGroupId();
-        userStore.addUserToUserGroup(user.id(), everyoneUserGroupId);
+        userGroupStore.addUserToUserGroup(user.id(), everyoneUserGroupId);
         return TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(everyoneUserGroupId), false);
     }
 

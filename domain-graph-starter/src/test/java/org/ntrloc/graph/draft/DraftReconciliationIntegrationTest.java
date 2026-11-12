@@ -8,6 +8,7 @@ import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.partition.authorization.AccessService;
 import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -32,6 +33,9 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @Autowired
     private AccessService accessService;
@@ -66,11 +70,11 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID group(String name) {
-        return userStore.createUserGroup(name + "-" + UUID.randomUUID()).id();
+        return userGroupStore.createUserGroup(name + "-" + UUID.randomUUID()).id();
     }
 
     private UUID group(String name, UUID parent) {
-        return userStore.createUserGroup(name + "-" + UUID.randomUUID(), parent).id();
+        return userGroupStore.createUserGroup(name + "-" + UUID.randomUUID(), parent).id();
     }
 
     private Permission createProducts() {
@@ -122,7 +126,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
     void aChangeLiveHasntTouched_needsNoReconciling_evenAfterUnrelatedLiveChanges() {
         UUID g = group("untouched");
         setInDraft("group", g, createProducts(), true);
-        userStore.updateUserGroup(group("elsewhere"), "renamed-" + UUID.randomUUID());
+        userGroupStore.updateUserGroup(group("elsewhere"), "renamed-" + UUID.randomUUID());
 
         assertThat(reasons()).containsEntry(g, List.of());
     }
@@ -135,7 +139,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
         UUID g = group("moved", oldParent);
         setInDraft("group", g, createProducts(), true);
 
-        userStore.setParent(g, newParent);
+        userGroupStore.setParent(g, newParent);
 
         assertThat(reasons().get(g)).containsExactly("PRINCIPAL_CHANGED " + g);
     }
@@ -147,7 +151,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
         UUID g = group("below", parent);
         setInDraft("group", g, createProducts(), true);
 
-        userStore.setParent(parent, group("elsewhere"));
+        userGroupStore.setParent(parent, group("elsewhere"));
 
         assertThat(reasons().get(g)).containsExactly("GROUP_CHANGED " + parent);
     }
@@ -159,7 +163,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
         UUID sub = group("sub", g);
         setInDraft("group", g, createProducts(), true);
 
-        userStore.addUserToUserGroup(userStore.createUser("Joiner", "joiner-" + UUID.randomUUID() + "@example.com", false).id(), sub);
+        userGroupStore.addUserToUserGroup(userStore.createUser("Joiner", "joiner-" + UUID.randomUUID() + "@example.com", false).id(), sub);
 
         assertThat(reasons().get(g)).containsExactly("GROUP_CHANGED " + sub);
     }
@@ -170,7 +174,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
         UUID g = group("renamed");
         setInDraft("group", g, createProducts(), true);
 
-        userStore.updateUserGroup(g, "renamed-again-" + UUID.randomUUID());
+        userGroupStore.updateUserGroup(g, "renamed-again-" + UUID.randomUUID());
 
         assertThat(reasons().get(g)).isEmpty();
     }
@@ -181,7 +185,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
         UUID g = group("child", parent);
         setInDraft("group", g, createProducts(), true);
 
-        userStore.addUserToUserGroup(userStore.createUser("Above", "above-" + UUID.randomUUID() + "@example.com", false).id(), parent);
+        userGroupStore.addUserToUserGroup(userStore.createUser("Above", "above-" + UUID.randomUUID() + "@example.com", false).id(), parent);
 
         assertThat(reasons().get(g)).isEmpty();
     }
@@ -203,7 +207,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
         UUID user = userStore.createUser("Joiner", "joiner-" + UUID.randomUUID() + "@example.com", false).id();
         setInDraft("user", user, createProducts(), true);
 
-        userStore.addUserToUserGroup(user, group("joined"));
+        userGroupStore.addUserToUserGroup(user, group("joined"));
 
         assertThat(reasons().get(user)).containsExactly("PRINCIPAL_CHANGED " + user);
     }
@@ -216,7 +220,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
         setInDraft("group", deletedGroup, createProducts(), true);
         setInDraft("group", g, Permission.forMarker(marker, Permission.AREA_ITEM, null, "read"), true);
 
-        userStore.deleteUserGroup(deletedGroup, false);
+        userGroupStore.deleteUserGroup(deletedGroup, false);
         accessService.deleteMarker(marker);
 
         assertThat(reasons()).containsEntry(deletedGroup, List.of("PRINCIPAL_DELETED " + deletedGroup))
@@ -227,7 +231,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
     void keeping_reconcilesTheChange_andItApplies() {
         UUID g = group("kept", group("old"));
         setInDraft("group", g, createProducts(), true);
-        userStore.setParent(g, group("new"));
+        userGroupStore.setParent(g, group("new"));
 
         reconcile(ADMIN, "group", g, createProducts(), "KEEP").expectStatus().isNoContent();
 
@@ -240,7 +244,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
     void usingLive_dropsTheChangeFromTheDraft() {
         UUID g = group("dropped", group("old"));
         setInDraft("group", g, createProducts(), true);
-        userStore.setParent(g, group("new"));
+        userGroupStore.setParent(g, group("new"));
 
         reconcile(ADMIN, "group", g, createProducts(), "USE_LIVE").expectStatus().isNoContent();
 
@@ -251,7 +255,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
     void adjustingTheChange_reconcilesItToo() {
         UUID g = group("adjusted", group("old"));
         setInDraft("group", g, createProducts(), true);
-        userStore.setParent(g, group("new"));
+        userGroupStore.setParent(g, group("new"));
 
         setInDraft("group", g, createProducts(), true);
 
@@ -262,7 +266,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
     void applyWaits_untilEveryChangeIsReconciled() {
         UUID g = group("waiting", group("old"));
         setInDraft("group", g, createProducts(), true);
-        userStore.setParent(g, group("new"));
+        userGroupStore.setParent(g, group("new"));
 
         webTestClient.post().uri("/api/drafts/" + draftId + "/apply").header(HttpHeaders.AUTHORIZATION, bearerTokenFor(ADMIN))
                 .exchange().expectStatus().isEqualTo(409)

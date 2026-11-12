@@ -4,6 +4,7 @@ import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerStoreReader;
 import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -50,14 +51,16 @@ public class MarkerAdminController {
     private final GrantStoreReader grantReader;
     private final AccessService accessService;
     private final UserStore userStore;
+    private final UserGroupStore userGroupStore;
     private final ExternalPrincipalResolver principalResolver;
 
     public MarkerAdminController(MarkerStoreReader markerReader, GrantStoreReader grantReader, AccessService accessService,
-                                  UserStore userStore, ExternalPrincipalResolver principalResolver) {
+                                  UserStore userStore, UserGroupStore userGroupStore, ExternalPrincipalResolver principalResolver) {
         this.markerReader = markerReader;
         this.grantReader = grantReader;
         this.accessService = accessService;
         this.userStore = userStore;
+        this.userGroupStore = userGroupStore;
         this.principalResolver = principalResolver;
     }
 
@@ -112,7 +115,7 @@ public class MarkerAdminController {
     MarkerGrantPrincipalsView getMarkerGrantPrincipals(@PathVariable UUID markerId,
                                                         Authentication authentication) {
         requireAdmin(authentication);
-        var groupNames = userStore.listUserGroups().stream()
+        var groupNames = userGroupStore.listUserGroups().stream()
                 .collect(Collectors.toMap(g -> g.id(), g -> g.name()));
         var userNames = userStore.listUsers().stream()
                 .collect(Collectors.toMap(UserStore.UserRow::id, UserStore.UserRow::displayName));

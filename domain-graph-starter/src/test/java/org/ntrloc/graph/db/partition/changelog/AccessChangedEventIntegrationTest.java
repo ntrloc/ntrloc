@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.security.UserService;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpHeaders;
@@ -37,6 +38,9 @@ class AccessChangedEventIntegrationTest extends AbstractIntegrationTest {
     private UserStore userStore;
 
     @Autowired
+    private UserGroupStore userGroupStore;
+
+    @Autowired
     private TransactionTemplate transactionTemplate;
 
     // Listens on the event stream as `email`; completes once an accessChanged event arrives.
@@ -51,7 +55,7 @@ class AccessChangedEventIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID root() {
-        return userStore.findUserGroupByName("everyone").orElseThrow().id();
+        return userGroupStore.findUserGroupByName("everyone").orElseThrow().id();
     }
 
     @Test

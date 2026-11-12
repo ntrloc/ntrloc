@@ -9,6 +9,7 @@ import org.ntrloc.graph.db.partition.authorization.AccessService;
 import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.ntrloc.graph.principal.InternalPrincipalResolver;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -34,6 +35,9 @@ class DraftApplyIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @Autowired
     private AccessService accessService;
@@ -83,7 +87,7 @@ class DraftApplyIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID newGroup() {
-        return userStore.createUserGroup("draft-apply-" + UUID.randomUUID()).id();
+        return userGroupStore.createUserGroup("draft-apply-" + UUID.randomUUID()).id();
     }
 
     private UUID newMarker() {
@@ -175,7 +179,7 @@ class DraftApplyIntegrationTest extends AbstractIntegrationTest {
         setInDraft(deletedGroup, createProducts(), true);
         setInDraft(keptGroup, readItems(deletedMarker), true);
         setInDraft(keptGroup, createProducts(), true);
-        userStore.deleteUserGroup(deletedGroup, false);
+        userGroupStore.deleteUserGroup(deletedGroup, false);
         accessService.deleteMarker(deletedMarker);
 
         post("apply", ADMIN).expectStatus().isEqualTo(409)

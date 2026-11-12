@@ -744,7 +744,8 @@ confirmed, changed or raised:
    as the record of what it changed.
 8. **A user's groups are fixed at sign-in** for session logins (personal access tokens and processes
    resolve them each time). Fine while groups aren't drafted; Phase 2 reads memberships from a cache
-   instead, never a query per request (plan, Phase 2).
+   instead, never a query per request (plan, Phase 2). **Done (plan step 2.3):** the principal resolver now answers from
+   `UserAccessCache`, so groups, admin flag and existence apply on the next request.
 9. **Impersonation is needed.** The admin UI is admin-only and an admin's grants allow everything, so
    what a non-admin sees in a draft can only be checked through the API. Seeing the system as a given
    user is needed in a later phase (plan, "Impersonation").

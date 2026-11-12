@@ -3,6 +3,7 @@ package org.ntrloc.graph.db.partition.security;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -28,6 +29,9 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> getAsRoot(String uri) {
@@ -70,7 +74,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.findUserByEmail(email).orElseThrow();
         assertThat(userStore.findCredentialsByUserId(user.id())).isPresent();
-        assertThat(userStore.getUserGroupsForUser(user.id())).extracting(g -> g.name()).contains("everyone");
+        assertThat(userGroupStore.getUserGroupsForUser(user.id())).extracting(g -> g.name()).contains("everyone");
     }
 
     @Test

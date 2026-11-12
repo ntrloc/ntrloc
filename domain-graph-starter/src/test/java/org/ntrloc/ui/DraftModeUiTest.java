@@ -14,6 +14,7 @@ import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.ntrloc.graph.draft.DraftParticipantRecord;
 import org.ntrloc.graph.draft.DraftService;
 import org.ntrloc.graph.principal.InternalPrincipalResolver;
@@ -32,6 +33,9 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @Autowired
     private org.ntrloc.graph.db.partition.security.UserService userService;
@@ -101,7 +105,7 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
 
     @Test
     void applyingADraft_putsItsGrantsInLive_andSaysWhatChanged() {
-        UUID group = userStore.createUserGroup("Apply " + tag).id();
+        UUID group = userGroupStore.createUserGroup("Apply " + tag).id();
         reload();
         drafts.startDraft("Apply " + tag);
         grantCreate("Apply " + tag);
@@ -126,7 +130,7 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
 
     @Test
     void discardingADraft_leavesLiveAsItWas() {
-        UUID group = userStore.createUserGroup("Discard " + tag).id();
+        UUID group = userGroupStore.createUserGroup("Discard " + tag).id();
         reload();
         drafts.startDraft("Discard " + tag);
         grantCreate("Discard " + tag);
@@ -140,7 +144,7 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
 
     @Test
     void dotsLeadFromTheSidebarToEachChangedGrant_andGoWhenTheChangeIsUndone() {
-        userStore.createUserGroup("Dotted " + tag);
+        userGroupStore.createUserGroup("Dotted " + tag);
         reload();
         drafts.startDraft("Dots " + tag);
         AccessPage access = AccessPage.of(driver);
@@ -158,14 +162,14 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
     // The example behind reconciliation (notes §13.3): another admin moves the group in live.
     @Test
     void aGroupMovedInLive_marksTheDraftsChange_andApplyWaitsUntilItsReconciled() {
-        UUID oldParent = userStore.createUserGroup("Old parent " + tag).id();
-        UUID newParent = userStore.createUserGroup("New parent " + tag).id();
-        UUID moved = userStore.createUserGroup("Moved " + tag, oldParent).id();
+        UUID oldParent = userGroupStore.createUserGroup("Old parent " + tag).id();
+        UUID newParent = userGroupStore.createUserGroup("New parent " + tag).id();
+        UUID moved = userGroupStore.createUserGroup("Moved " + tag, oldParent).id();
         reload();
         drafts.startDraft("Reconcile " + tag);
         grantCreate("Moved " + tag);
 
-        userStore.setParent(moved, newParent);
+        userGroupStore.setParent(moved, newParent);
 
         drafts.openReview();
         assertThat(drafts.dialogText()).contains("Moved " + tag + ": " + WIDGET_TYPE + ": Create granted")
@@ -195,8 +199,8 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
     // The other example behind notices (notes §13.6): nothing changed in the draft, and a group moves in live.
     @Test
     void aGroupMovedInLive_isAChangeToReview_inContextAndFromTheBar_untilAcknowledged() {
-        UUID moving = userStore.createUserGroup("Moving " + tag).id();
-        UUID target = userStore.createUserGroup("Target " + tag).id();
+        UUID moving = userGroupStore.createUserGroup("Moving " + tag).id();
+        UUID target = userGroupStore.createUserGroup("Target " + tag).id();
         reload();
         drafts.startDraft("Notices " + tag);
         AccessPage access = AccessPage.of(driver).section("Groups").select("Moving " + tag);

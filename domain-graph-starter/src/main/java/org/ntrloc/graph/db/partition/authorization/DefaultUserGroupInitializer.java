@@ -3,7 +3,7 @@ package org.ntrloc.graph.db.partition.authorization;
 import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import jakarta.annotation.PostConstruct;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
-import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.ntrloc.graph.db.partition.changelog.ChangeLog;
 import org.ntrloc.graph.db.partition.security.UserService;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -26,15 +26,14 @@ import java.util.UUID;
 public class DefaultUserGroupInitializer {
 
     public static final String DEFAULT_GROUP_NAME = "everyone";
-
-    private final UserStore userStore;
+    private final UserGroupStore userGroupStore;
     private final UserService userService;
     private final AccessService accessService;
     private final JdbcClient jdbcClient;
 
-    public DefaultUserGroupInitializer(UserStore userStore, UserService userService, AccessService accessService,
+    public DefaultUserGroupInitializer(UserGroupStore userGroupStore, UserService userService, AccessService accessService,
                                     JdbcClient jdbcClient) {
-        this.userStore = userStore;
+        this.userGroupStore = userGroupStore;
         this.userService = userService;
         this.accessService = accessService;
         this.jdbcClient = jdbcClient;
@@ -42,14 +41,14 @@ public class DefaultUserGroupInitializer {
 
     @PostConstruct
     void ensureUserGroupExists() {
-        if (userStore.findUserGroupByName(DEFAULT_GROUP_NAME).isEmpty()) {
+        if (userGroupStore.findUserGroupByName(DEFAULT_GROUP_NAME).isEmpty()) {
             ChangeLog.withSource("startup", () -> userService.createRootUserGroup(DEFAULT_GROUP_NAME));
         }
     }
 
     @EventListener(ApplicationReadyEvent.class)
     void populateAfterStartup() {
-        var group = userStore.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
+        var group = userGroupStore.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
         ChangeLog.withSource("startup", () -> {
             userService.addEveryUser(group.id());
             grantReadForUncoveredItemTypes(group.id());
@@ -58,7 +57,7 @@ public class DefaultUserGroupInitializer {
 
     @EventListener
     public void onItemTypeCreated(SchemaChangeEvent.ItemTypeCreated event) {
-        var group = userStore.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
+        var group = userGroupStore.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
         grantReadForItemType(event.itemTypeId(), group.id());
     }
 
@@ -70,7 +69,7 @@ public class DefaultUserGroupInitializer {
     }
 
     public UUID getDefaultUserGroupId() {
-        return userStore.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow().id();
+        return userGroupStore.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow().id();
     }
 
     // Every user-creation path (UserAdminController, LocalAccountSeeder,

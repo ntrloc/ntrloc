@@ -9,6 +9,7 @@ import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.UUID;
@@ -30,12 +31,15 @@ class PrincipalResolverIntegrationTest extends AbstractIntegrationTest {
     private UserStore userStore;
 
     @Autowired
+    private UserGroupStore userGroupStore;
+
+    @Autowired
     private PersonalAccessTokenService tokenService;
 
     private UserStore.UserRow createUserInAGroup() {
         var user = userStore.createUser("Resolver User", "Resolver-" + UUID.randomUUID() + "@Example.com", false);
-        var group = userStore.createUserGroup("resolver-group-" + UUID.randomUUID());
-        userStore.addUserToUserGroup(user.id(), group.id());
+        var group = userGroupStore.createUserGroup("resolver-group-" + UUID.randomUUID());
+        userGroupStore.addUserToUserGroup(user.id(), group.id());
         return user;
     }
 
@@ -49,7 +53,7 @@ class PrincipalResolverIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(principal.id()).isEqualTo(user.id());
         assertThat(principal.email()).isEqualTo(user.email());
-        assertThat(principal.groupIds()).isEqualTo(userStore.getUserGroupIdsForUser(user.id()));
+        assertThat(principal.groupIds()).isEqualTo(userGroupStore.getUserGroupIdsForUser(user.id()));
         assertThat(principal.isAdmin()).isFalse();
     }
 

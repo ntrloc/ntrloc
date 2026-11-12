@@ -11,6 +11,7 @@ import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.changelog.ChangeEntries.Entry;
 import org.ntrloc.graph.db.partition.security.UserService;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -41,6 +42,9 @@ class ChangeLogIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @Autowired
     private AccessService accessService;
@@ -78,7 +82,7 @@ class ChangeLogIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID root() {
-        return userStore.findUserGroupByName("everyone").orElseThrow().id();
+        return userGroupStore.findUserGroupByName("everyone").orElseThrow().id();
     }
 
     private UUID group(String name) {
@@ -115,7 +119,7 @@ class ChangeLogIntegrationTest extends AbstractIntegrationTest {
         start = changeLog.latestPosition();
 
         userService.addMember(user, g);
-        userService.renameUserGroup(g, userStore.findUserGroupById(g).orElseThrow().name());
+        userService.renameUserGroup(g, userGroupStore.findUserGroupById(g).orElseThrow().name());
         userService.setParent(g, root());
 
         assertThat(since()).isEmpty();
@@ -241,7 +245,7 @@ class ChangeLogIntegrationTest extends AbstractIntegrationTest {
         })).hasMessage("roll back");
 
         assertThat(since()).isEmpty();
-        assertThat(userStore.findUserGroupByName(name)).isEmpty();
+        assertThat(userGroupStore.findUserGroupByName(name)).isEmpty();
     }
 
     @Test

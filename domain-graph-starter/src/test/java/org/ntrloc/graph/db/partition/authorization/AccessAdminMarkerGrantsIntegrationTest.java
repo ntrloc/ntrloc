@@ -8,6 +8,7 @@ import org.ntrloc.graph.db.coordinator.CountedPredicateTestDomainInitializer;
 import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -28,6 +29,9 @@ class AccessAdminMarkerGrantsIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @Autowired
     private AccessService accessService;
@@ -90,7 +94,7 @@ class AccessAdminMarkerGrantsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void aGroupsMarkerGrants_areSetPerArea_revokedPerArea_andDeletedWhole() {
-        UUID group = userStore.createUserGroup("legacy-grants-" + UUID.randomUUID()).id();
+        UUID group = userGroupStore.createUserGroup("legacy-grants-" + UUID.randomUUID()).id();
         UUID transition = firstTransitionFromTargets();
         String base = "/user-groups/" + group;
 

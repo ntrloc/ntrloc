@@ -15,6 +15,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
 import org.ntrloc.graph.projection.ItemProjectionSpec;
@@ -62,6 +63,9 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     private UserStore userStore;
 
     @Autowired
+    private UserGroupStore userGroupStore;
+
+    @Autowired
     private DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
@@ -105,7 +109,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     private NtrlocPrincipal newUserInEveryoneUserGroup() {
         var user = userStore.createUser("Restricted", "irf-" + UUID.randomUUID() + "@example.com", false);
         UUID everyoneUserGroupId = defaultUserGroupInitializer.getDefaultUserGroupId();
-        userStore.addUserToUserGroup(user.id(), everyoneUserGroupId);
+        userGroupStore.addUserToUserGroup(user.id(), everyoneUserGroupId);
         // groupIds is carried directly on the principal, not re-resolved from the DB per check --
         // must match the membership just added above or every type-level (and instance-level
         // group-granted) check below fails as if the user were in no groups at all.

@@ -11,6 +11,7 @@ import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -33,6 +34,9 @@ class GrantsInEveryAreaIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @Autowired
     private AccessService accessService;
@@ -63,7 +67,7 @@ class GrantsInEveryAreaIntegrationTest extends AbstractIntegrationTest {
         draftId = UUID.fromString((String) webTestClient.post().uri("/api/drafts").header(HttpHeaders.AUTHORIZATION, bearerTokenFor(ADMIN))
                 .bodyValue(Map.of("name", "Every area test")).exchange().expectStatus().isCreated()
                 .expectBody(Map.class).returnResult().getResponseBody().get("id"));
-        group = userStore.createUserGroup("every-area-" + UUID.randomUUID()).id();
+        group = userGroupStore.createUserGroup("every-area-" + UUID.randomUUID()).id();
         UUID marker = accessService.createMarker("every-area-" + UUID.randomUUID(), "", "ITEM_TYPE", products.productTypeId()).id();
         everyKind = List.of(
                 Permission.itemType(products.productTypeId(), "read"),

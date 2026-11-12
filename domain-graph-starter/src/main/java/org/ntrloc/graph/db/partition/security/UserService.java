@@ -3,7 +3,8 @@ package org.ntrloc.graph.db.partition.security;
 import org.ntrloc.graph.db.partition.authorization.AccessService;
 import org.ntrloc.graph.db.partition.changelog.ChangeLog;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
-import org.ntrloc.graph.db.partition.security.repository.UserStore.UserGroupRow;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore.UserGroupRow;
 import org.ntrloc.graph.db.partition.security.repository.UserStore.UserRow;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,11 +25,13 @@ import java.util.UUID;
 public class UserService {
 
     private final UserStore userStore;
+    private final UserGroupStore userGroupStore;
     private final AccessService accessService;
     private final ChangeLog changeLog;
 
-    public UserService(UserStore userStore, AccessService accessService, ChangeLog changeLog) {
+    public UserService(UserStore userStore, UserGroupStore userGroupStore, AccessService accessService, ChangeLog changeLog) {
         this.userStore = userStore;
+        this.userGroupStore = userGroupStore;
         this.accessService = accessService;
         this.changeLog = changeLog;
     }
@@ -45,43 +48,43 @@ public class UserService {
 
     @Transactional
     public UserGroupRow createRootUserGroup(String name) {
-        return userStore.createRootUserGroup(name);
+        return userGroupStore.createRootUserGroup(name);
     }
 
     @Transactional
     public UserGroupRow createUserGroup(String name, UUID parentId) {
-        return userStore.createUserGroup(name, parentId);
+        return userGroupStore.createUserGroup(name, parentId);
     }
 
     @Transactional
     public UserGroupRow renameUserGroup(UUID groupId, String name) {
-        return userStore.updateUserGroup(groupId, name);
+        return userGroupStore.updateUserGroup(groupId, name);
     }
 
     @Transactional
     public void setParent(UUID groupId, UUID parentId) {
-        userStore.setParent(groupId, parentId);
+        userGroupStore.setParent(groupId, parentId);
     }
 
     @Transactional
     public void addMember(UUID userId, UUID groupId) {
-        userStore.addUserToUserGroup(userId, groupId);
+        userGroupStore.addUserToUserGroup(userId, groupId);
     }
 
     @Transactional
     public void removeMember(UUID userId, UUID groupId) {
-        userStore.removeUserFromUserGroup(userId, groupId);
+        userGroupStore.removeUserFromUserGroup(userId, groupId);
     }
 
     @Transactional
     public void addEveryUser(UUID groupId) {
-        userStore.addAllUsersToUserGroup(groupId);
+        userGroupStore.addAllUsersToUserGroup(groupId);
     }
 
     @Transactional
     public void deleteUser(UUID userId) {
         UserRow user = userStore.findUserById(userId).orElseThrow();
-        List<Map<String, Object>> groups = userStore.getUserGroupsForUser(userId).stream()
+        List<Map<String, Object>> groups = userGroupStore.getUserGroupsForUser(userId).stream()
                 .map(g -> Map.<String, Object>of("id", g.id(), "name", g.name())).toList();
         Map<String, Object> before = new LinkedHashMap<>();
         before.put("displayName", user.displayName());
@@ -97,24 +100,24 @@ public class UserService {
     }
 
     /**
-     * Deletes the group with its grants. A group with subgroups is refused (UserStore.HasSubgroupsException)
+     * Deletes the group with its grants. A group with subgroups is refused (UserGroupStore.HasSubgroupsException)
      * unless forced, which deletes the subgroups and their grants too. One changelog entry per group deleted.
      */
     @Transactional
     public void deleteUserGroup(UUID groupId, boolean force) {
         List<Map.Entry<UUID, Map<String, Object>>> deleting = new ArrayList<>();
-        for (UUID id : userStore.subtreeOf(groupId)) {
-            UserGroupRow group = userStore.findUserGroupById(id).orElseThrow();
+        for (UUID id : userGroupStore.subtreeOf(groupId)) {
+            UserGroupRow group = userGroupStore.findUserGroupById(id).orElseThrow();
             Map<String, Object> before = new LinkedHashMap<>();
             before.put("name", group.name());
             before.put("parentId", group.parentId());
-            before.put("parentName", group.parentId() == null ? null : userStore.findUserGroupById(group.parentId()).map(UserGroupRow::name).orElse(null));
-            before.put("members", userStore.listUserGroupMembers(id).stream()
+            before.put("parentName", group.parentId() == null ? null : userGroupStore.findUserGroupById(group.parentId()).map(UserGroupRow::name).orElse(null));
+            before.put("members", userGroupStore.listUserGroupMembers(id).stream()
                     .map(u -> Map.<String, Object>of("id", u.id(), "name", u.displayName())).toList());
             before.put("grants", accessService.getPermissions("USER_GROUP", id));
             deleting.add(Map.entry(id, before));
         }
-        List<UUID> deleted = userStore.deleteUserGroup(groupId, force);
+        List<UUID> deleted = userGroupStore.deleteUserGroup(groupId, force);
         accessService.deleteGrantsForPrincipals("USER_GROUP", deleted);
         for (var entry : deleting) {
             List<UUID> refs = new ArrayList<>(List.of(entry.getKey()));

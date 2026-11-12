@@ -4,7 +4,7 @@ import org.ntrloc.graph.db.partition.authorization.AccessService;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
-import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.ntrloc.graph.db.partition.changelog.ChangeLog;
 import org.ntrloc.graph.db.partition.security.UserService;
 import org.springframework.boot.ApplicationArguments;
@@ -26,16 +26,16 @@ import java.util.stream.Collectors;
 public class AuthorizationTestDataInitializer implements ApplicationRunner {
 
     private final SchemaService schemaService;
-    private final UserStore userStore;
+    private final UserGroupStore userGroupStore;
     private final UserService userService;
     private final AccessService accessService;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
-    public AuthorizationTestDataInitializer(SchemaService schemaService, UserStore userStore, UserService userService,
+    public AuthorizationTestDataInitializer(SchemaService schemaService, UserGroupStore userGroupStore, UserService userService,
                                              AccessService accessService,
                                              DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.schemaService = schemaService;
-        this.userStore = userStore;
+        this.userGroupStore = userGroupStore;
         this.userService = userService;
         this.accessService = accessService;
         this.defaultUserGroupInitializer = defaultUserGroupInitializer;
@@ -86,7 +86,7 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
         defaultUserGroupInitializer.addUserToDefaultUserGroup(carol.id());
         defaultUserGroupInitializer.addUserToDefaultUserGroup(root.id());
 
-        var viewers = userService.createUserGroup("viewers", userStore.findUserGroupByName(DefaultUserGroupInitializer.DEFAULT_GROUP_NAME).orElseThrow().id());
+        var viewers = userService.createUserGroup("viewers", userGroupStore.findUserGroupByName(DefaultUserGroupInitializer.DEFAULT_GROUP_NAME).orElseThrow().id());
         userService.addMember(alice.id(), viewers.id());
         userService.addMember(bob.id(), viewers.id());
 
@@ -95,7 +95,7 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
     }
 
     private void revokeDefaultReadGrant(UUID itemTypeId) {
-        UUID everyoneUserGroupId = userStore.findUserGroupByName(DefaultUserGroupInitializer.DEFAULT_GROUP_NAME).orElseThrow().id();
+        UUID everyoneUserGroupId = userGroupStore.findUserGroupByName(DefaultUserGroupInitializer.DEFAULT_GROUP_NAME).orElseThrow().id();
         accessService.revokeItemType(itemTypeId, "USER_GROUP", everyoneUserGroupId, GrantStoreReader.ITEM_TYPE_READ);
     }
 }

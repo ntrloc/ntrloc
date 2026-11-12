@@ -3,7 +3,7 @@ package org.ntrloc.graph.db.partition.security;
 import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
-import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -39,15 +39,14 @@ public class UserGroupAdminController {
     public record MemberView(UUID id, String displayName, String email, boolean isAdmin) {}
 
     public record AddMemberRequest(UUID userId) {}
-
-    private final UserStore store;
+    private final UserGroupStore userGroupStore;
     private final UserService userService;
     private final ExternalPrincipalResolver principalResolver;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
-    public UserGroupAdminController(UserStore store, UserService userService, ExternalPrincipalResolver principalResolver,
+    public UserGroupAdminController(UserGroupStore userGroupStore, UserService userService, ExternalPrincipalResolver principalResolver,
                                 DefaultUserGroupInitializer defaultUserGroupInitializer) {
-        this.store = store;
+        this.userGroupStore = userGroupStore;
         this.userService = userService;
         this.principalResolver = principalResolver;
         this.defaultUserGroupInitializer = defaultUserGroupInitializer;
@@ -56,7 +55,7 @@ public class UserGroupAdminController {
     @GetMapping
     List<UserGroupView> listUserGroups(Authentication authentication) {
         requireAdmin(authentication);
-        return store.listUserGroups().stream()
+        return userGroupStore.listUserGroups().stream()
                 .map(this::toView)
                 .toList();
     }
@@ -75,10 +74,10 @@ public class UserGroupAdminController {
         if (body.parentUserGroupId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A parent group is required -- 'everyone' is the only top-level group");
         }
-        if (store.findUserGroupByName(body.name().trim()).isPresent()) {
+        if (userGroupStore.findUserGroupByName(body.name().trim()).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "UserGroup already exists: " + body.name());
         }
-        store.findUserGroupById(body.parentUserGroupId())
+        userGroupStore.findUserGroupById(body.parentUserGroupId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Parent group not found"));
         return toView(userService.createUserGroup(body.name().trim(), body.parentUserGroupId()));
     }
@@ -87,7 +86,7 @@ public class UserGroupAdminController {
     UserGroupView updateUserGroup(@PathVariable("groupId") UUID groupId, @RequestBody UpdateUserGroupRequest body,
                           Authentication authentication) {
         requireAdmin(authentication);
-        store.findUserGroupById(groupId)
+        userGroupStore.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         if (body.name() == null || body.name().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "UserGroup name is required");
@@ -102,24 +101,24 @@ public class UserGroupAdminController {
     UserGroupView updateParent(@PathVariable("groupId") UUID groupId, @RequestBody UpdateParentRequest body,
                            Authentication authentication) {
         requireAdmin(authentication);
-        var group = store.findUserGroupById(groupId)
+        var group = userGroupStore.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         if (body.parentUserGroupId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A parent group is required -- 'everyone' is the only top-level group");
         }
-        store.findUserGroupById(body.parentUserGroupId())
+        userGroupStore.findUserGroupById(body.parentUserGroupId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Parent group not found"));
         try {
             userService.setParent(groupId, body.parentUserGroupId());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
-        return toView(store.findUserGroupById(group.id()).orElseThrow());
+        return toView(userGroupStore.findUserGroupById(group.id()).orElseThrow());
     }
 
-    private UserGroupView toView(UserStore.UserGroupRow g) {
+    private UserGroupView toView(UserGroupStore.UserGroupRow g) {
         var parentIds = g.parentId() == null ? List.<UUID>of() : List.of(g.parentId());
-        return new UserGroupView(g.id(), g.name(), store.listUserGroupMembers(g.id()).size(), parentIds);
+        return new UserGroupView(g.id(), g.name(), userGroupStore.listUserGroupMembers(g.id()).size(), parentIds);
     }
 
     // A group with subgroups is refused (409) unless force=true, which deletes the subgroups too. The
@@ -132,11 +131,11 @@ public class UserGroupAdminController {
         if (groupId.equals(defaultUserGroupInitializer.getDefaultUserGroupId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot delete the default group");
         }
-        store.findUserGroupById(groupId)
+        userGroupStore.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         try {
             userService.deleteUserGroup(groupId, force);
-        } catch (UserStore.HasSubgroupsException e) {
+        } catch (UserGroupStore.HasSubgroupsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         }
         return ResponseEntity.noContent().build();
@@ -146,9 +145,9 @@ public class UserGroupAdminController {
     List<MemberView> listMembers(@PathVariable("groupId") UUID groupId,
                                  Authentication authentication) {
         requireAdmin(authentication);
-        store.findUserGroupById(groupId)
+        userGroupStore.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
-        return store.listUserGroupMembers(groupId).stream()
+        return userGroupStore.listUserGroupMembers(groupId).stream()
                 .map(u -> new MemberView(u.id(), u.displayName(), u.email(), u.isAdmin()))
                 .toList();
     }
@@ -157,7 +156,7 @@ public class UserGroupAdminController {
     ResponseEntity<Void> addMember(@PathVariable("groupId") UUID groupId, @RequestBody AddMemberRequest body,
                                    Authentication authentication) {
         requireAdmin(authentication);
-        store.findUserGroupById(groupId)
+        userGroupStore.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         userService.addMember(body.userId(), groupId);
         return ResponseEntity.noContent().build();

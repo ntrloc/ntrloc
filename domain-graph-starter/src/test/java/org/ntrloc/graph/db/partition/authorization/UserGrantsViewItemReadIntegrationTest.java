@@ -12,6 +12,7 @@ import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.OffsetDateTime;
@@ -45,6 +46,9 @@ class UserGrantsViewItemReadIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserStore userStore;
+
+    @Autowired
+    private UserGroupStore userGroupStore;
 
     @Autowired
     private LedgerRegisterCoordinator coordinator;
@@ -107,7 +111,7 @@ class UserGrantsViewItemReadIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem();
         UUID marker = createMarker();
         markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
-        var group = userStore.createUserGroup("pisr-" + UUID.randomUUID());
+        var group = userGroupStore.createUserGroup("pisr-" + UUID.randomUUID());
         grantItemRead(marker, "USER_GROUP", group.id());
 
         var member = userStore.createUser("Member", "pisr-" + UUID.randomUUID() + "@example.com", false);

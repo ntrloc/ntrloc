@@ -23,6 +23,7 @@ import org.ntrloc.graph.draft.DraftStore;
 import org.ntrloc.graph.draft.DraftTopics;
 import org.ntrloc.graph.db.partition.security.UserService;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.ntrloc.graph.cluster.ClusterService;
 import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
 import org.springframework.context.ApplicationListener;
@@ -154,10 +155,11 @@ class ArchitectureRulesTest {
     // through UserService, whose methods are transactional (UserStore writes the entry).
     @ArchTest
     static final ArchRule usersAndGroupsChangeOnlyThroughUserService = noClasses()
-            .that().doNotBelongToAnyOf(UserService.class, UserStore.class)
+            .that().doNotBelongToAnyOf(UserService.class, UserStore.class, UserGroupStore.class)
             .should().callMethodWhere(com.tngtech.archunit.core.domain.JavaCall.Predicates.target(
                     com.tngtech.archunit.core.domain.properties.HasOwner.Predicates.With.<com.tngtech.archunit.core.domain.JavaClass>owner(
-                            com.tngtech.archunit.core.domain.JavaClass.Predicates.equivalentTo(UserStore.class)))
+                            com.tngtech.archunit.core.domain.JavaClass.Predicates.equivalentTo(UserStore.class)
+                                    .or(com.tngtech.archunit.core.domain.JavaClass.Predicates.equivalentTo(UserGroupStore.class))))
                     .and(com.tngtech.archunit.core.domain.JavaCall.Predicates.target(
                             com.tngtech.archunit.core.domain.properties.HasName.Predicates.nameMatching(
                                     "create(Root)?UserGroup|createUser|updateUser(Group)?|deleteUser(Group)?|setParent|addUserToUserGroup|removeUserFromUserGroup|addAllUsersToUserGroup"))))

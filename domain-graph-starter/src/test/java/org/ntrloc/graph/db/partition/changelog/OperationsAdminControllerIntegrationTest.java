@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.security.UserService;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -36,6 +37,9 @@ class OperationsAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private UserStore userStore;
 
     @Autowired
+    private UserGroupStore userGroupStore;
+
+    @Autowired
     private JdbcClient jdbcClient;
 
     @AfterEach
@@ -64,7 +68,7 @@ class OperationsAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void settingRetention_prunesAtOnce() {
         long start = jdbcClient.sql("SELECT COALESCE(MAX(seq), 0) FROM config_change_log").query(Long.class).single();
-        userService.createUserGroup("old-" + UUID.randomUUID(), userStore.findUserGroupByName("everyone").orElseThrow().id());
+        userService.createUserGroup("old-" + UUID.randomUUID(), userGroupStore.findUserGroupByName("everyone").orElseThrow().id());
         jdbcClient.sql("UPDATE config_change_log SET at = now() - interval '40 days' WHERE seq > :start").param("start", start).update();
 
         put(30, ADMIN).expectStatus().isOk().expectBody().jsonPath("$.retentionDays").isEqualTo(30);

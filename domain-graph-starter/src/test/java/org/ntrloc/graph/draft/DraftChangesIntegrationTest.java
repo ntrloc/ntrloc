@@ -8,6 +8,7 @@ import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.partition.authorization.AccessService;
 import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -33,6 +34,9 @@ class DraftChangesIntegrationTest extends AbstractIntegrationTest {
     private UserStore userStore;
 
     @Autowired
+    private UserGroupStore userGroupStore;
+
+    @Autowired
     private AccessService accessService;
 
     @Autowired
@@ -51,7 +55,7 @@ class DraftChangesIntegrationTest extends AbstractIntegrationTest {
         UUID alice = userStore.findUserByEmail(INVITED).orElseThrow().id();
         webTestClient.post().uri("/api/drafts/" + draftId + "/participants").header(HttpHeaders.AUTHORIZATION, bearerTokenFor(ADMIN))
                 .bodyValue(Map.of("userId", alice)).exchange().expectStatus().isNoContent();
-        group = userStore.createUserGroup("draft-changes-" + UUID.randomUUID()).id();
+        group = userGroupStore.createUserGroup("draft-changes-" + UUID.randomUUID()).id();
     }
 
     @AfterEach

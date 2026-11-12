@@ -4,6 +4,7 @@ import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -69,14 +70,16 @@ public class AccessAdminController {
     private final GrantStoreReader accessReader;
     private final AccessService accessService;
     private final UserStore userStore;
+    private final UserGroupStore userGroupStore;
     private final SchemaStore schemaStore;
     private final ExternalPrincipalResolver principalResolver;
 
-    public AccessAdminController(GrantStoreReader accessReader, AccessService accessService, UserStore userStore,
+    public AccessAdminController(GrantStoreReader accessReader, AccessService accessService, UserStore userStore, UserGroupStore userGroupStore,
                                  SchemaStore schemaStore, ExternalPrincipalResolver principalResolver) {
         this.accessReader = accessReader;
         this.accessService = accessService;
         this.userStore = userStore;
+        this.userGroupStore = userGroupStore;
         this.schemaStore = schemaStore;
         this.principalResolver = principalResolver;
     }
@@ -176,7 +179,7 @@ public class AccessAdminController {
     ItemTypeGrantPrincipalsView getItemTypeGrantPrincipals(@PathVariable("itemTypeId") UUID itemTypeId,
                                                             Authentication authentication) {
         requireAdmin(authentication);
-        var groupNames = userStore.listUserGroups().stream()
+        var groupNames = userGroupStore.listUserGroups().stream()
                 .collect(Collectors.toMap(g -> g.id(), g -> g.name()));
         var userNames = userStore.listUsers().stream()
                 .collect(Collectors.toMap(UserStore.UserRow::id, UserStore.UserRow::displayName));
@@ -610,7 +613,7 @@ public class AccessAdminController {
         requireAdmin(authentication);
 
         // Get all groups user belongs to
-        var userUserGroups = userStore.getUserGroupsForUser(userId);
+        var userUserGroups = userGroupStore.getUserGroupsForUser(userId);
         if (userUserGroups.isEmpty()) {
             return List.of();
         }
@@ -660,7 +663,7 @@ public class AccessAdminController {
     List<UserGroupMembershipView> getUserGroups(@PathVariable("userId") UUID userId,
                                             Authentication authentication) {
         requireAdmin(authentication);
-        return userStore.getUserGroupsForUser(userId).stream()
+        return userGroupStore.getUserGroupsForUser(userId).stream()
                 .map(g -> new UserGroupMembershipView(g.id(), g.name()))
                 .toList();
     }
@@ -686,7 +689,7 @@ public class AccessAdminController {
     }
 
     private void requireUserGroupExists(UUID groupId) {
-        userStore.findUserGroupById(groupId)
+        userGroupStore.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
     }
 
