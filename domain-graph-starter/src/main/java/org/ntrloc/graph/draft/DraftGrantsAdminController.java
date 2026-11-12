@@ -32,13 +32,14 @@ public class DraftGrantsAdminController {
     @GetMapping
     List<PrincipalPermissions> getPermissions(DraftScope scope, @RequestParam("principal") List<String> principals) {
         GrantsApi.requireAdmin(scope.user());
-        return grantsApi.permissions(draftAccessService.getGrantsView(scope), principals);
+        return grantsApi.permissions(draftAccessService.getGrantsView(scope), principals,
+                principal -> draftAccessService.exists(scope.draftId(), principal, grantsApi));
     }
 
     @PutMapping
     ResponseEntity<Void> setPermission(DraftScope scope, @RequestBody SetPermissionRequest body) {
         GrantsApi.requireAdmin(scope.user());
-        grantsApi.requireValid(body);
+        grantsApi.requireValid(body, principal -> draftAccessService.exists(scope.draftId(), principal, grantsApi));
         draftAccessService.setPermission(scope, GrantsApi.principalType(body.principal()), body.principal().id(), body.permission(), body.value());
         return ResponseEntity.noContent().build();
     }

@@ -40,15 +40,17 @@ public class DraftController {
 
     public record AppliedGrantView(PrincipalRef principal, Permission permission, boolean value, String outcome) {}
 
-    public record AppliedDraftView(DraftView draft, List<AppliedGrantView> grants) {}
+    public record AppliedDraftView(DraftView draft, List<DraftUserService.AppliedGroupChange> groups,
+                                   List<DraftUserService.AppliedMembership> memberships, List<AppliedGrantView> grants) {}
 
     /** `reconcile`: why live has moved underneath this change since it was made; empty if it hasn't. */
     public record GrantChangeView(PrincipalRef principal, Permission permission, boolean value, List<GrantDependencyTracker.Reason> reconcile) {}
 
     public record ReconcileRequest(PrincipalRef principal, Permission permission, DraftAccessService.Resolution resolution) {}
 
-    /** What the draft changes against live, by family (Phase 1 drafts grants only); and the live changes it has yet to acknowledge. */
-    public record DraftChangesView(List<GrantChangeView> grants, List<DraftNotice> notices) {}
+    /** What the draft changes against live, by family; and the live changes it has yet to acknowledge. */
+    public record DraftChangesView(List<DraftUserService.GroupChange> groups, List<DraftMembershipChange> memberships,
+                                   List<GrantChangeView> grants, List<DraftNotice> notices) {}
 
     public record AcknowledgeRequest(String elementKey, Long seq) {}
 
@@ -57,9 +59,11 @@ public class DraftController {
     private final DraftChangeLog draftLog;
     private final UserStore userStore;
     private final ExternalPrincipalResolver principalResolver;
+    private final DraftUserService draftUserService;
 
     public DraftController(DraftService draftService, DraftAccessService draftAccessService, DraftChangeLog draftLog, UserStore userStore,
-                           ExternalPrincipalResolver principalResolver) {
+                           ExternalPrincipalResolver principalResolver, DraftUserService draftUserService) {
+        this.draftUserService = draftUserService;
         this.draftLog = draftLog;
         this.draftService = draftService;
         this.draftAccessService = draftAccessService;
@@ -91,17 +95,18 @@ public class DraftController {
     @PostMapping("/{draftId}/apply")
     AppliedDraftView apply(@PathVariable UUID draftId, Authentication authentication) {
         var applied = draftService.apply(draftId, principalResolver.resolve(authentication));
-        return new AppliedDraftView(view(applied.draft()), applied.grants().stream().map(g -> {
+        return new AppliedDraftView(view(applied.draft()), applied.groups(), applied.memberships(), applied.grants().stream().map(g -> {
             var o = g.override();
             return new AppliedGrantView(principalOf(o), o.permission(), o.value(), g.outcome().name());
         }).toList());
     }
 
-    // Grant changes are shown in the Access view, which is for admins.
+    // Group, membership and grant changes are shown in the Access view, which is for admins.
     @GetMapping("/{draftId}/changes")
     DraftChangesView changes(DraftScope scope) {
         GrantsApi.requireAdmin(scope.user());
-        return new DraftChangesView(draftAccessService.changes(scope.draftId()).stream()
+        return new DraftChangesView(draftUserService.groupChanges(scope.draftId()), draftUserService.membershipChanges(scope.draftId()),
+                draftAccessService.changes(scope.draftId()).stream()
                 .map(c -> new GrantChangeView(principalOf(c.override()), c.override().permission(), c.override().value(), c.reconcile())).toList(),
                 draftAccessService.notices(scope));
     }

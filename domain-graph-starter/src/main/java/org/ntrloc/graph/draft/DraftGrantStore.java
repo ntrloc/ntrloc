@@ -156,6 +156,13 @@ public class DraftGrantStore {
         draftGrantsChanged(draftId);
     }
 
+    /** Every override the draft has for this principal goes (a group the draft made, then deleted). */
+    public void discardAll(UUID draftId, String principalType, UUID principalId) {
+        jdbcClient.sql("DELETE FROM draft_grant_override WHERE draft_id = :draftId AND principal_type = :principalType AND principal_id = :principalId")
+                .param(PARAM_DRAFT_ID, draftId).param("principalType", principalType).param("principalId", principalId).update();
+        draftGrantsChanged(draftId);
+    }
+
     private static JdbcClient.StatementSpec bind(JdbcClient.StatementSpec sql, UUID draftId, String principalType, UUID principalId, Permission p) {
         return sql.param(PARAM_DRAFT_ID, draftId).param("principalType", principalType).param("principalId", principalId)
                 .param("kind", p.kind()).param("itemTypeId", p.itemTypeId()).param("markerId", p.markerId())

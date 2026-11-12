@@ -65,8 +65,13 @@ public class GrantsApi {
 
     /** Each named principal's own permissions, in the order asked for. */
     public List<PrincipalPermissions> permissions(GrantsView grants, List<String> principals) {
+        return permissions(grants, principals, this::exists);
+    }
+
+    /** As above, with `exists` saying which principals there are (a draft has groups live doesn't). */
+    public List<PrincipalPermissions> permissions(GrantsView grants, List<String> principals, java.util.function.Predicate<PrincipalRef> exists) {
         return principals.stream().map(GrantsApi::parsePrincipal).map(principal -> {
-            requireExists(principal);
+            requireExists(principal, exists);
             return new PrincipalPermissions(principal, grants.permissionsOf(principalType(principal), principal.id()).stream()
                     .sorted(Comparator.comparing(Permission::toString)).toList());
         }).toList();
@@ -93,11 +98,16 @@ public class GrantsApi {
      * against -- checked here rather than left to foreign keys, which a draft's overrides don't have.
      */
     public void requireValid(SetPermissionRequest request) {
+        requireValid(request, this::exists);
+    }
+
+    /** As above, with `exists` saying which principals there are. */
+    public void requireValid(SetPermissionRequest request, java.util.function.Predicate<PrincipalRef> exists) {
         if (request.principal() == null || request.principal().id() == null || request.permission() == null || request.value() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "principal, permission and value are required");
         }
         principalType(request.principal());
-        requireExists(request.principal());
+        requireExists(request.principal(), exists);
         if (!grantable(request.permission(), targets())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The permission names something that can't be granted");
         }
@@ -188,10 +198,21 @@ public class GrantsApi {
     }
 
     public void requireExists(PrincipalRef principal) {
-        boolean exists = "user".equals(principal.kind())
+        requireExists(principal, this::exists);
+    }
+
+    private static void requireExists(PrincipalRef principal, java.util.function.Predicate<PrincipalRef> exists) {
+        if (!exists.test(principal)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such " + principal.kind());
+    }
+
+    public boolean isUser(UUID userId) {
+        return userStore.findUserById(userId).isPresent();
+    }
+
+    private boolean exists(PrincipalRef principal) {
+        return "user".equals(principal.kind())
                 ? userStore.findUserById(principal.id()).isPresent()
                 : userGroupStore.findUserGroupById(principal.id()).isPresent();
-        if (!exists) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such " + principal.kind());
     }
 
 }

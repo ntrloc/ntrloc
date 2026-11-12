@@ -909,6 +909,36 @@ CREATE TABLE draft_grant_override (
 CREATE UNIQUE INDEX draft_grant_override_permission_idx ON draft_grant_override
     (draft_id, principal_type, principal_id, kind, item_type_id, marker_id, area, target_id, op) NULLS NOT DISTINCT;
 
+-- A draft's group changes (docs/ntrloc-drafts-plan.md step 2.4): one row per group the draft touches.
+-- created: the draft makes the group (its id is kept on apply), with its name and parent; deleted: the
+-- draft removes a live group. Otherwise name and parent_id are what the draft sets (NULL = unchanged),
+-- base_name and base_parent_id live's values when they were set, which conflicts compare against. A
+-- rename or move of a group the draft deletes is kept, hidden, so restoring it brings them back.
+CREATE TABLE draft_group_change (
+    draft_id       UUID NOT NULL REFERENCES draft(id) ON DELETE CASCADE,
+    group_id       UUID NOT NULL,
+    created        BOOLEAN NOT NULL DEFAULT FALSE,
+    deleted        BOOLEAN NOT NULL DEFAULT FALSE,
+    name           TEXT,
+    base_name      TEXT,
+    parent_id      UUID,
+    base_parent_id UUID,
+    PRIMARY KEY (draft_id, group_id),
+    CHECK (NOT (created AND deleted)),
+    CHECK (NOT created OR (name IS NOT NULL AND parent_id IS NOT NULL))
+);
+
+-- A draft's membership changes: the value it sets and live's when it was set, as for grants.
+CREATE TABLE draft_membership_change (
+    draft_id    UUID NOT NULL REFERENCES draft(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL,
+    group_id    UUID NOT NULL,
+    member      BOOLEAN NOT NULL,
+    base_member BOOLEAN NOT NULL,
+    PRIMARY KEY (draft_id, user_id, group_id),
+    CHECK (member <> base_member)
+);
+
 -- === config_change_log: the live changelog (docs/ntrloc-system-model-notes.md §13.6) ===
 -- One entry per configuration change, appended in the same transaction as the change: users, groups,
 -- memberships and grants so far. element_key names what changed (group:<id>, membership:<group>:<user>,

@@ -56,6 +56,12 @@ public class UserService {
         return userGroupStore.createUserGroup(name, parentId);
     }
 
+    /** With a given id: a group a draft created keeps its id when the draft is applied. */
+    @Transactional
+    public UserGroupRow createUserGroup(UUID id, String name, UUID parentId) {
+        return userGroupStore.createUserGroup(id, name, parentId);
+    }
+
     @Transactional
     public UserGroupRow renameUserGroup(UUID groupId, String name) {
         return userGroupStore.updateUserGroup(groupId, name);

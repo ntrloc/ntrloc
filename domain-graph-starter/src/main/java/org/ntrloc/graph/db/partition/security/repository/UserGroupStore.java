@@ -25,6 +25,8 @@ public class UserGroupStore {
 
     public record UserGroupRow(UUID id, String name, UUID parentId) {}
 
+    public record MembershipRow(UUID userId, UUID groupId) {}
+
     private static final String SELECT_GROUPS = "SELECT g.id, g.name, g.parent_id FROM security_user_group g";
 
     private static final RowMapper<UserGroupRow> GROUP_ROW = (rs, _) -> new UserGroupRow(
@@ -83,8 +85,14 @@ public class UserGroupStore {
     }
 
     public UserGroupRow createUserGroup(String name, UUID parentId) {
+        return createUserGroup(null, name, parentId);
+    }
+
+    // With the id given (a group a draft created keeps its draft id), or a new one if null.
+    public UserGroupRow createUserGroup(UUID id, String name, UUID parentId) {
         accessCache.changed();
-        UUID id = jdbcClient.sql("INSERT INTO security_user_group (name, parent_id) VALUES (:name, :parentId) RETURNING id")
+        id = jdbcClient.sql("INSERT INTO security_user_group (id, name, parent_id) VALUES (COALESCE(CAST(:id AS uuid), uuidv7()), :name, :parentId) RETURNING id")
+                .param("id", id)
                 .param("name", name)
                 .param("parentId", java.util.Objects.requireNonNull(parentId, "every group but the root has a parent"))
                 .query(UUID.class).single();
@@ -225,6 +233,13 @@ public class UserGroupStore {
         return jdbcClient.sql(SELECT_GROUPS + " WHERE g.parent_id = :groupId ORDER BY g.name")
                 .param(PARAM_GROUP_ID, groupId)
                 .query(GROUP_ROW)
+                .list();
+    }
+
+    // Every membership (a draft's group view is built from them all).
+    public List<MembershipRow> listMemberships() {
+        return jdbcClient.sql("SELECT user_id, group_id FROM security_user_group_member")
+                .query((rs, _) -> new MembershipRow(rs.getObject("user_id", UUID.class), rs.getObject("group_id", UUID.class)))
                 .list();
     }
 

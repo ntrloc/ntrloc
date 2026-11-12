@@ -19,7 +19,8 @@ import java.util.UUID;
 // The draft registry (docs/ntrloc-system-model-notes.md §11): admins start, list and discard drafts and
 // invite non-admins into them. Admins reach every draft and are never invited; a non-admin reaches only
 // the drafts they're invited to. Phase 1 allows one open draft at a time. Applying writes a draft's
-// changes to live through the services that own them; the draft keeps its overrides as the record.
+// changes to live through the services that own them (groups, memberships, grants); the draft keeps its
+// changes as the record.
 @Service
 public class DraftService {
 
@@ -47,7 +48,8 @@ public class DraftService {
 
     public record AppliedGrant(DraftGrantOverride override, GrantOutcome outcome) {}
 
-    public record AppliedDraft(DraftRecord draft, List<AppliedGrant> grants) {}
+    public record AppliedDraft(DraftRecord draft, List<DraftUserService.AppliedGroupChange> groups,
+                               List<DraftUserService.AppliedMembership> memberships, List<AppliedGrant> grants) {}
 
     private final DraftStore draftStore;
     private final UserStore userStore;
@@ -57,9 +59,12 @@ public class DraftService {
     private final GrantsApi grantsApi;
     private final ChangeLog changeLog;
     private final DraftChangeLog draftLog;
+    private final DraftUserService draftUserService;
 
     public DraftService(DraftStore draftStore, UserStore userStore, DraftAccessService draftAccessService, AccessService accessService,
-                        GrantStoreReader liveGrants, GrantsApi grantsApi, ChangeLog changeLog, DraftChangeLog draftLog) {
+                        GrantStoreReader liveGrants, GrantsApi grantsApi, ChangeLog changeLog, DraftChangeLog draftLog,
+                        DraftUserService draftUserService) {
+        this.draftUserService = draftUserService;
         this.changeLog = changeLog;
         this.draftLog = draftLog;
         this.draftStore = draftStore;
@@ -100,6 +105,7 @@ public class DraftService {
         requireAdmin(admin);
         var closed = draftStore.close(draftId, Status.DISCARDED, admin.id()).orElseThrow(DraftNotFoundException::new);
         draftAccessService.draftClosed(draftId);
+        draftUserService.draftClosed(draftId);
         draftLog.append(draftId, "draft.discarded", "draft:" + draftId, List.of(draftId), null, Map.of("name", closed.name()));
         return closed;
     }
@@ -121,23 +127,32 @@ public class DraftService {
                     : unreconciled + " changes need reconciling with live before the draft can be applied");
         }
         var targets = grantsApi.targets();
+        var deletedGroups = draftUserService.deletedGroups(draftId);
+        List<DraftUserService.AppliedGroupChange> groups = new ArrayList<>();
+        List<DraftUserService.AppliedMembership> memberships = new ArrayList<>();
         List<AppliedGrant> grants = new ArrayList<>();
         try {
-            // Live's changelog entries for these writes say they came from the draft.
+            // Live's changelog entries for these writes say they came from the draft. Groups first, so
+            // grants and memberships find the groups the draft makes; deletions last.
             ChangeLog.withSource("draft '" + draft.name() + "'", () -> {
+                groups.addAll(draftUserService.applyGroupChanges(draftId));
+                memberships.addAll(draftUserService.applyMemberships(draftId));
                 for (var override : draftAccessService.overrides(draftId)) {
+                    if ("USER_GROUP".equals(override.principalType()) && deletedGroups.contains(override.principalId())) continue;
                     grants.add(new AppliedGrant(override, applyGrant(override, targets)));
                 }
+                groups.addAll(draftUserService.applyDeletes(draftId));
             });
         } catch (DataIntegrityViolationException e) {
             throw new DraftConflictException("Live changed while the draft was being applied: try again");
         }
         var closed = draftStore.close(draftId, Status.APPLIED, admin.id()).orElseThrow(DraftNotFoundException::new);
         draftAccessService.draftClosed(draftId);
+        draftUserService.draftClosed(draftId);
         draftLog.append(draftId, "draft.applied", "draft:" + draftId, List.of(draftId), null, Map.of("name", closed.name(),
                 "applied", grants.stream().filter(g -> g.outcome() == GrantOutcome.APPLIED).count(),
                 "alreadyLive", grants.stream().filter(g -> g.outcome() == GrantOutcome.ALREADY_LIVE).count()));
-        return new AppliedDraft(closed, grants);
+        return new AppliedDraft(closed, groups, memberships, grants);
     }
 
     private GrantOutcome applyGrant(DraftGrantOverride override, GrantsApi.GrantTargets targets) {

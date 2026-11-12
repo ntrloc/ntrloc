@@ -82,10 +82,16 @@ public class GrantDependencyTracker {
 
     /** For each override, why it needs reconciling with live as it is now; overrides that don't are left out. */
     public Map<DraftGrantOverride, List<Reason>> check(Collection<DraftGrantOverride> overrides) {
+        return check(overrides, java.util.Set.of());
+    }
+
+    /** As above; a grant to a group the draft makes (`draftGroups`) depends on nothing in live. */
+    public Map<DraftGrantOverride, List<Reason>> check(Collection<DraftGrantOverride> overrides, java.util.Set<UUID> draftGroups) {
         if (overrides.isEmpty()) return Map.of();
         var targets = grantsApi.targets();
         Map<DraftGrantOverride, List<Reason>> found = new LinkedHashMap<>();
         for (var o : overrides) {
+            if (draftGroups.contains(o.principalId())) continue;
             List<Reason> reasons = check(o, targets);
             if (!reasons.isEmpty()) found.put(o, reasons);
         }

@@ -55,6 +55,14 @@ public class UserAccessCache {
         return loaded;
     }
 
+    /**
+     * Moves on whenever this node learns that users, groups or memberships changed. Something built from them
+     * when it stood lower is out of date (a draft's group view checks it, docs/ntrloc-drafts-plan.md step 2.4).
+     */
+    public long generation() {
+        return generation.get();
+    }
+
     /** Users, groups or memberships changed: clear once the caller's transaction commits, here and on every node. */
     void changed() {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {

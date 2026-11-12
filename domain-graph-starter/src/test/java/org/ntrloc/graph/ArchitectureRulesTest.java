@@ -174,7 +174,8 @@ class ArchitectureRulesTest {
             new SingleWriter(MarkerStoreWriter.class, AccessService.class),
             new SingleWriter(DraftStore.class, DraftService.class),
             new SingleWriter(DraftGrantStore.class, DraftAccessService.class),
-            new SingleWriter(org.ntrloc.graph.draft.DraftNoticeStore.class, DraftAccessService.class));
+            new SingleWriter(org.ntrloc.graph.draft.DraftNoticeStore.class, DraftAccessService.class),
+            new SingleWriter(org.ntrloc.graph.draft.DraftGroupStore.class, org.ntrloc.graph.draft.DraftUserService.class));
 
     // §8.6: each store has exactly one service that writes it (a service may own several stores).
     @ArchTest
@@ -191,7 +192,8 @@ class ArchitectureRulesTest {
     }
 
     // Stores covered by the transaction rule below. Listed as each partition is restructured.
-    private static final List<Class<?>> TRANSACTION_FREE_STORES = List.of(GrantStore.class, MarkerStore.class, DraftStore.class, DraftGrantStore.class, org.ntrloc.graph.draft.DraftNoticeStore.class);
+    private static final List<Class<?>> TRANSACTION_FREE_STORES = List.of(GrantStore.class, MarkerStore.class, DraftStore.class, DraftGrantStore.class, org.ntrloc.graph.draft.DraftNoticeStore.class,
+            org.ntrloc.graph.draft.DraftGroupStore.class);
 
     // §8.6: stores own their storage, not transactions. The logical layer decides where a transaction
     // starts and ends; a store method needing atomicity requires one (Propagation.MANDATORY) without

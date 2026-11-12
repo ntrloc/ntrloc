@@ -6,11 +6,13 @@ import org.ntrloc.graph.db.partition.authorization.repository.UserGrantsView;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.ntrloc.graph.db.partition.authorization.GrantsApi;
+
 import java.util.List;
 import java.util.UUID;
 
-// AccessService's counterpart inside a draft: the only writer of DraftGrantStore. Phase 1 drafts grants
-// only; markers stay live.
+// AccessService's counterpart inside a draft: the only writer of DraftGrantStore. Users' groups are the
+// draft's (DraftGroupStoreReader); markers stay live.
 @Service
 public class DraftAccessService {
 
@@ -21,9 +23,11 @@ public class DraftAccessService {
     private final GrantDependencyTracker dependencies;
     private final DraftNoticeStore notices;
     private final DraftChangeLog draftLog;
+    private final DraftGroupStoreReader groups;
 
     public DraftAccessService(DraftGrantStore draftGrantStore, GrantDependencyTracker dependencies, DraftNoticeStore notices,
-                              DraftChangeLog draftLog) {
+                              DraftChangeLog draftLog, DraftGroupStoreReader groups) {
+        this.groups = groups;
         this.draftGrantStore = draftGrantStore;
         this.dependencies = dependencies;
         this.notices = notices;
@@ -50,10 +54,21 @@ public class DraftAccessService {
         return draftGrantStore.getGrantsView(scope.draftId());
     }
 
-    /** As AccessService.getUserGrants, from the draft's grants: the scope's user, as they are in the draft. */
+    /** As AccessService.getUserGrants, from the draft's grants: the scope's user, with their groups in the draft. */
     public UserGrantsView getUserGrants(DraftScope scope) {
         var user = scope.user();
-        return user.isAdmin() ? UserGrantsView.forAdmin() : getGrantsView(scope).forUser(user.id(), user.groupIds());
+        return user.isAdmin() ? UserGrantsView.forAdmin()
+                : getGrantsView(scope).forUser(user.id(), groups.view(scope.draftId()).effectiveGroupIds(user.id()));
+    }
+
+    /** Whether the principal is there in the draft: users are live's, groups the draft's. */
+    public boolean exists(UUID draftId, GrantsApi.PrincipalRef principal, GrantsApi grantsApi) {
+        return "group".equals(principal.kind()) ? groups.view(draftId).find(principal.id()).isPresent() : grantsApi.isUser(principal.id());
+    }
+
+    /** A group the draft made is gone again: so are the grants the draft gave it. */
+    public void dropGrants(UUID draftId, UUID groupId) {
+        draftGrantStore.discardAll(draftId, "USER_GROUP", groupId);
     }
 
     public List<DraftGrantOverride> overrides(UUID draftId) {
@@ -65,8 +80,12 @@ public class DraftAccessService {
      * live (docs/ntrloc-system-model-notes.md §13.4). Changes live has caught up with aren't listed.
      */
     public List<GrantChange> changes(UUID draftId) {
-        List<DraftGrantOverride> changes = draftGrantStore.changes(draftId);
-        var reconcile = dependencies.check(changes);
+        var draftGroups = groups.view(draftId);
+        // A group the draft deletes takes its grant changes out of sight; restoring it brings them back.
+        List<DraftGrantOverride> changes = draftGrantStore.changes(draftId).stream()
+                .filter(o -> !("USER_GROUP".equals(o.principalType()) && draftGroups.deletes(o.principalId())))
+                .toList();
+        var reconcile = dependencies.check(changes, draftGroups.created());
         return changes.stream().map(o -> new GrantChange(o, reconcile.getOrDefault(o, List.of()))).toList();
     }
 
