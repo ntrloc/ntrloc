@@ -40,9 +40,9 @@ export async function discardDraft(draftId) {
   return res.json()
 }
 
-// What the draft changes against live as it is now (admins only), by family; Phase 1 drafts grants
-// only: { grants: [{ principal: { kind, id }, permission, value, reconcile }] }. reconcile lists why live
-// has moved underneath that change since it was made ({ kind, id, name }); empty if it hasn't.
+// What the draft changes against live as it is now (admins only), by family: { groups, memberships,
+// grants, notices }. Each change's reconcile lists why live has put it in question; empty if it hasn't.
+// A group or membership reason is { kind, field, draft, live, base, groups, choices, liveChanges }.
 export async function fetchDraftChanges(draftId) {
   const res = await fetch(draftAddress(draftId, 'changes'), { credentials: 'same-origin' })
   if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to fetch the draft's changes (${res.status})`))
@@ -57,6 +57,28 @@ export async function reconcileChange(draftId, principal, permission, resolution
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ principal, permission, resolution }),
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to reconcile the change (${res.status})`))
+}
+
+// Settles one item on a group change (docs/ntrloc-system-model-notes.md §13.4.1): `field` is the
+// reason's (name, parent, created, deleted, or null for the change as a whole); `resolution` one of its
+// choices (KEEP, USE_LIVE, ABANDON, DELETE_SUBGROUPS).
+export async function reconcileGroupChange(draftId, groupId, field, resolution) {
+  await postReconcile(draftId, { groupId, field, resolution })
+}
+
+// Settles a membership change live has orphaned: USE_LIVE drops it.
+export async function reconcileMembershipChange(draftId, groupId, userId, resolution) {
+  await postReconcile(draftId, { groupId, userId, resolution })
+}
+
+async function postReconcile(draftId, body) {
+  const res = await fetch(draftAddress(draftId, 'reconcile'), {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to reconcile the change (${res.status})`))
 }

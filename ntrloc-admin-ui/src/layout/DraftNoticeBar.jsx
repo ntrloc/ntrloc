@@ -12,7 +12,10 @@ const count = (n, one, many) => `${n} ${n === 1 ? one : many}`
 function DraftNoticeBar() {
   const { draft, notices, needsReconciling, canStartDrafts } = useDraftMode()
   const [reviewing, setReviewing] = useState(false)
-  if (!draft || !canStartDrafts || (notices.length === 0 && needsReconciling === 0)) return null
+  if (!draft || !canStartDrafts) return null
+  // With nothing left, the bar goes; an open review stays until closed, rather than vanishing as its last
+  // item is settled (or coming back unasked when a new one arrives).
+  if (notices.length === 0 && needsReconciling === 0) return reviewing ? <ReconcileDialog onClose={() => setReviewing(false)} /> : null
 
   return (
     <draft-notice-bar role="status">

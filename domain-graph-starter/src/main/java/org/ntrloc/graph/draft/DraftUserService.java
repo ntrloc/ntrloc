@@ -459,6 +459,13 @@ public class DraftUserService {
         return applied;
     }
 
+    /** The live groups the draft deletes, as live has them, with their live member counts. */
+    public List<Map.Entry<UserGroupRow, Integer>> deletedLiveGroups(UUID draftId) {
+        DraftGroups groups = store.view(draftId);
+        return liveGroups.listUserGroups().stream().filter(g -> groups.deletes(g.id()))
+                .map(g -> Map.entry(g, liveGroups.listUserGroupMembers(g.id()).size())).toList();
+    }
+
     /** The groups the draft deletes (apply leaves their grant changes out). */
     public java.util.Set<UUID> deletedGroups(UUID draftId) {
         return store.groupChanges(draftId).stream().filter(DraftGroupChange::deleted).map(DraftGroupChange::groupId)

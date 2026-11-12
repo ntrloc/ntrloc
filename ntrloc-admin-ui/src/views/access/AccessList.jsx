@@ -4,7 +4,8 @@ import './AccessList.css'
 
 // A selectable list with an add action above it -- the users list and the groups list. `items` are
 // { id, label, admin?, depth?, mark? }; an entry with a change in the current draft is marked (ModifiedDot), and an admin, since admins have every permission regardless of
-// grants, and depth indents an entry under the one above (the group hierarchy).
+// grants, and depth indents an entry under the one above (the group hierarchy). A deleted entry (a group
+// the draft deletes) is struck through.
 function AccessList({ addLabel, items, selectedId, onSelect }) {
   return (
     <access-list>
@@ -25,7 +26,7 @@ function AccessList({ addLabel, items, selectedId, onSelect }) {
               style={{ '--depth': item.depth ?? 0 }}
               onClick={() => onSelect(item.id)}
             >
-              <span className="access-list-label">{item.label}</span>
+              <span className={item.deleted ? 'access-list-label access-list-deleted' : 'access-list-label'}>{item.label}</span>
               {item.mark && <ModifiedDot kind={item.mark} />}
               {item.admin && <span className="access-list-badge">Admin</span>}
             </button>

@@ -1,0 +1,4 @@
+.group-detail-deleted-name {
+  color: var(--text);
+  text-decoration: line-through;
+}

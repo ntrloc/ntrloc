@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAccessChanged } from '../../../global/viewmodel/useAccessChanged'
+import { useDraftMode } from '../../../global/viewmodel/useDraftMode'
 import { fetchGroupDetail } from '../AccessDelegate'
 
 // One group's detail: the group, its direct members, and which tab is showing. The view is keyed on
@@ -9,6 +10,8 @@ export function useGroupDetailViewModel(groupId, initialTab) {
   const [detail, setDetail] = useState(null)
   const [status, setStatus] = useState('loading')
   const [tabKey, setTabKey] = useState(initialTab ?? 'overview')
+  const { draft, draftRevision } = useDraftMode()
+  const draftId = draft?.id ?? null
 
   const apply = useCallback((loaded) => {
     setDetail(loaded)
@@ -16,12 +19,12 @@ export function useGroupDetailViewModel(groupId, initialTab) {
   }, [])
 
   useEffect(() => {
-    fetchGroupDetail(groupId)
+    fetchGroupDetail(draftId, groupId)
       .then(apply)
       .catch(() => setStatus('error'))
-  }, [groupId, apply])
+  }, [draftId, draftRevision, groupId, apply])
 
-  const reload = useCallback(() => fetchGroupDetail(groupId).then(apply), [groupId, apply])
+  const reload = useCallback(() => fetchGroupDetail(draftId, groupId).then(apply), [draftId, groupId, apply])
 
   useAccessChanged(() => void reload().catch(() => setStatus('error')))
 

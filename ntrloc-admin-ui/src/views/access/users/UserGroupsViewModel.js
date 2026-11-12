@@ -6,23 +6,25 @@ import { groupHierarchy } from '../permissions/grantModel'
 const EVERYONE = 'everyone'
 
 // The Group membership tab: the whole group hierarchy, ticked where the user was added directly.
-// CheckboxTree's selectUpward shows the groups above those as implied. Membership isn't drafted yet
-// (Phase 2, docs/ntrloc-drafts-plan.md), so in draft mode it's read-only.
+// CheckboxTree's selectUpward shows the groups above those as implied. In a draft, the draft's groups
+// and memberships.
 export function useUserGroupsViewModel({ detail, allGroups, reload }) {
   const { user, groups } = detail
-  const { inDraft } = useDraftMode()
+  const { draft, reloadChanges } = useDraftMode()
+  const draftId = draft?.id ?? null
   const [error, setError] = useState(null)
 
   const directGroupIds = groups.map((g) => g.id)
   const directGroupKeys = new Set(directGroupIds)
   // Everyone is in everyone.
-  const groupTree = groupHierarchy(allGroups, (g) => ({ disabled: inDraft || g.name === EVERYONE }))
+  const groupTree = groupHierarchy(allGroups, (g) => ({ disabled: g.name === EVERYONE }))
 
   async function run(action) {
     setError(null)
     try {
       await action()
       await reload()
+      reloadChanges()
     } catch (e) {
       setError(e.message)
     }
@@ -32,9 +34,9 @@ export function useUserGroupsViewModel({ detail, allGroups, reload }) {
   function setDirectGroups(next) {
     const joined = [...next].find((id) => !directGroupKeys.has(id))
     const left = directGroupIds.find((id) => !next.has(id))
-    if (joined) void run(() => addUserToGroup(user.id, joined))
-    else if (left) void run(() => removeUserFromGroup(user.id, left))
+    if (joined) void run(() => addUserToGroup(draftId, user.id, joined))
+    else if (left) void run(() => removeUserFromGroup(draftId, user.id, left))
   }
 
-  return { groupTree, directGroupKeys, setDirectGroups, error, inDraft }
+  return { groupTree, directGroupKeys, setDirectGroups, error }
 }

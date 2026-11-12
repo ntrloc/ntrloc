@@ -63,3 +63,8 @@ access-list {
 .access-list-item .modified-dot {
   margin-left: -2px;
 }
+
+.access-list-deleted {
+  color: var(--text);
+  text-decoration: line-through;
+}

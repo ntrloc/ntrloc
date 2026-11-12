@@ -1,5 +1,6 @@
 // Every call the Access screens make: users, groups and membership (/api/admin/users,
-// /api/admin/user-groups) and grants (/api/admin/grants).
+// /api/admin/user-groups) and grants (/api/admin/grants); groups, membership and grants at
+// /api/drafts/{id}/admin/... in a draft.
 import { draftAddress } from '../../global/delegate/draftAddress'
 
 async function readErrorMessage(res, fallback) {
@@ -30,14 +31,18 @@ export async function fetchUsers() {
   return users.map(withSignIn).sort((a, b) => a.displayName.localeCompare(b.displayName))
 }
 
+// Groups and memberships: each call takes the draft to work in (its id), or null for live. Users
+// themselves are always live.
+const groupsBase = (draftId) => (draftId ? draftAddress(draftId, 'admin') : '/api/admin')
+
 // One user, with what the Info / Tokens tab shows alongside: their tokens and the groups they're
-// directly in.
-export async function fetchUserDetail(userId) {
+// directly in (in the draft, if any).
+export async function fetchUserDetail(draftId, userId) {
   const [users, tokens, memberships, groups] = await Promise.all([
     get('/api/admin/users', 'fetch the user'),
     get(`/api/admin/users/${userId}/tokens`, "fetch the user's tokens"),
-    get(`/api/admin/users/${userId}/user-groups`, "fetch the user's groups"),
-    fetchGroups(),
+    get(`${groupsBase(draftId)}/users/${userId}/user-groups`, "fetch the user's groups"),
+    fetchGroups(draftId),
   ])
   const user = users.find((u) => u.id === userId)
   if (!user) throw new Error('No such user')
@@ -64,44 +69,59 @@ export function revokeToken(userId, tokenId) {
 
 // --- Groups ---
 
-export async function fetchGroups() {
-  const groups = await get('/api/admin/user-groups', 'fetch groups')
-  return groups.sort((a, b) => a.name.localeCompare(b.name))
+const byName = (groups) => groups.sort((a, b) => a.name.localeCompare(b.name))
+
+// The groups, each { id, name, memberCount, parentIds }. In a draft, the live groups it deletes are
+// included too, marked deleted: true, where live has them, so they can be shown and restored.
+export async function fetchGroups(draftId) {
+  if (!draftId) return byName(await get('/api/admin/user-groups', 'fetch groups'))
+  const [groups, deleted] = await Promise.all([
+    get(`${groupsBase(draftId)}/user-groups`, 'fetch groups'),
+    get(`${groupsBase(draftId)}/user-groups/deleted`, 'fetch deleted groups'),
+  ])
+  return byName([...groups, ...deleted.map((g) => ({ ...g, deleted: true }))])
 }
 
-// One group, with its direct members.
-export async function fetchGroupDetail(groupId) {
-  const [groups, members] = await Promise.all([fetchGroups(), get(`/api/admin/user-groups/${groupId}/members`, 'fetch members')])
+// One group, with its direct members (none listed for a group the draft deletes).
+export async function fetchGroupDetail(draftId, groupId) {
+  const groups = await fetchGroups(draftId)
   const group = groups.find((g) => g.id === groupId)
   if (!group) throw new Error('No such group')
+  if (group.deleted) return { group, members: [] }
+  const members = await get(`${groupsBase(draftId)}/user-groups/${groupId}/members`, 'fetch members')
   return { group, members: members.sort((a, b) => a.displayName.localeCompare(b.displayName)) }
 }
 
-export function renameGroup(groupId, name) {
-  return request('PUT', `/api/admin/user-groups/${groupId}`, 'rename the group', { name })
+export function renameGroup(draftId, groupId, name) {
+  return request('PUT', `${groupsBase(draftId)}/user-groups/${groupId}`, 'rename the group', { name })
 }
 
-// One parent, replacing the old one.
 // A new group under parentId. Returns it as { id, name, memberCount, parentIds }.
-export function createGroup(name, parentId) {
-  return request('POST', '/api/admin/user-groups', 'create the group', { name, parentUserGroupId: parentId })
+export function createGroup(draftId, name, parentId) {
+  return request('POST', `${groupsBase(draftId)}/user-groups`, 'create the group', { name, parentUserGroupId: parentId })
 }
 
 // A group with subgroups is refused unless force is true, which deletes them too. Grants go with them.
-export function deleteGroup(groupId, force) {
-  return request('DELETE', `/api/admin/user-groups/${groupId}${force ? '?force=true' : ''}`, 'delete the group')
+export function deleteGroup(draftId, groupId, force) {
+  return request('DELETE', `${groupsBase(draftId)}/user-groups/${groupId}${force ? '?force=true' : ''}`, 'delete the group')
 }
 
-export function setGroupParent(groupId, parentId) {
-  return request('PUT', `/api/admin/user-groups/${groupId}/parent`, "change the group's parent", { parentUserGroupId: parentId })
+// Brings back a group the draft deletes (drafts only).
+export function restoreGroup(draftId, groupId) {
+  return request('POST', `${groupsBase(draftId)}/user-groups/${groupId}/restore`, 'restore the group')
 }
 
-export function addUserToGroup(userId, groupId) {
-  return request('POST', `/api/admin/user-groups/${groupId}/members`, 'add to the group', { userId })
+// One parent, replacing the old one.
+export function setGroupParent(draftId, groupId, parentId) {
+  return request('PUT', `${groupsBase(draftId)}/user-groups/${groupId}/parent`, "change the group's parent", { parentUserGroupId: parentId })
 }
 
-export function removeUserFromGroup(userId, groupId) {
-  return request('DELETE', `/api/admin/user-groups/${groupId}/members/${userId}`, 'remove from the group')
+export function addUserToGroup(draftId, userId, groupId) {
+  return request('POST', `${groupsBase(draftId)}/user-groups/${groupId}/members`, 'add to the group', { userId })
+}
+
+export function removeUserFromGroup(draftId, userId, groupId) {
+  return request('DELETE', `${groupsBase(draftId)}/user-groups/${groupId}/members/${userId}`, 'remove from the group')
 }
 
 // --- Grants ---

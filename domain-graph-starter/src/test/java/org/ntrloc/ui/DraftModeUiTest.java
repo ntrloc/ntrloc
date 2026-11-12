@@ -124,7 +124,7 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
         drafts.startDraft("Empty " + tag);
 
         assertThat(drafts.apply()).isEmpty();
-        assertThat(drafts.dialogText()).contains("didn't change any permissions");
+        assertThat(drafts.dialogText()).contains("didn't change anything");
         drafts.done();
     }
 

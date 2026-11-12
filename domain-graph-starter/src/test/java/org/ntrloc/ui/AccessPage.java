@@ -43,7 +43,7 @@ class AccessPage {
 
     /** Selects a user or group in the list and waits for its detail. */
     AccessPage select(String label) {
-        driver.findElement(By.xpath("//access-list//button[.//span[@class='access-list-label' and normalize-space()='" + label + "']]")).click();
+        driver.findElement(By.xpath("//access-list//button[.//span[contains(concat(' ', @class, ' '), ' access-list-label ') and normalize-space()='" + label + "']]")).click();
         await().until(d -> heading().equals(label));
         return this;
     }
@@ -276,6 +276,28 @@ class AccessPage {
         var pills = driver.findElements(By.cssSelector(".permission-pill[data-modified='" + kind + "']")).stream()
                 .map(pill -> "pill " + pill.getText().trim());
         return Stream.concat(dotted, pills).toList();
+    }
+
+    /** The group's "Parent group" field, as it reads (out of edit mode too). */
+    String parentGroup() {
+        return detail().findElement(By.xpath(".//popover-button[.//span[@class='input-control-name' and normalize-space()='Parent group']]"
+                + "//span[@class='popover-button-value' or @class='popover-button-trigger-label']")).getText().trim();
+    }
+
+    /** Whether the list shows this group struck through (one the draft deletes). */
+    boolean struckThrough(String label) {
+        return !driver.findElements(By.xpath("//access-list//span[contains(@class,'access-list-deleted') and normalize-space()='" + label + "']")).isEmpty();
+    }
+
+    /** The detail's items to reconcile with live, each as its text (words, live changes, choices). */
+    List<String> reconcileItems() {
+        return detail().findElements(By.cssSelector("reconcile-item")).stream().map(e -> e.getText().replaceAll("\\s+", " ").trim()).toList();
+    }
+
+    /** Settles the detail's item to reconcile with the choice labelled `choice`. */
+    AccessPage settle(String choice) {
+        detail().findElement(By.xpath(".//reconcile-item//button[normalize-space()='" + choice + "']")).click();
+        return this;
     }
 
     /** The detail's "Changed in live" panel, or "" when there's none. */

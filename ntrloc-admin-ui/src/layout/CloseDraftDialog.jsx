@@ -5,16 +5,25 @@ import { applyDraft, discardDraft } from '../global/delegate/DraftDelegate'
 import { useDraftMode } from '../global/viewmodel/useDraftMode'
 import './CloseDraftDialog.css'
 
+// What applying did, by family and outcome: [family, one, many, { outcome: label }].
 const OUTCOMES = [
-  ['APPLIED', 'changed in live'],
-  ['ALREADY_LIVE', 'already in live'],
+  ['groups', 'group change', 'group changes', { APPLIED: 'made in live', ALREADY_LIVE: 'already in live' }],
+  ['memberships', 'membership change', 'membership changes', { APPLIED: 'made in live', ALREADY_LIVE: 'already in live' }],
+  ['grants', 'permission', 'permissions', { APPLIED: 'changed in live', ALREADY_LIVE: 'already in live' }],
 ]
 
-function countOf(grants, outcome) {
-  return grants.filter((g) => g.outcome === outcome).length
+function outcomeLines(applied) {
+  return OUTCOMES.flatMap(([family, one, many, labels]) =>
+    Object.entries(labels)
+      .map(([outcome, label]) => {
+        const count = (applied[family] ?? []).filter((c) => c.outcome === outcome).length
+        return count === 0 ? null : `${count} ${count === 1 ? one : many} ${label}`
+      })
+      .filter(Boolean),
+  )
 }
 
-// Applies or discards this tab's draft, after asking. Applying then says what happened to each grant;
+// Applies or discards this tab's draft, after asking. Applying then says what happened to its changes;
 // either way the tab goes back to live. A draft with changes live has moved underneath can't be applied
 // until they're reconciled (the server checks too).
 function CloseDraftDialog({ action, onClose, onReconcile }) {
@@ -43,7 +52,7 @@ function CloseDraftDialog({ action, onClose, onReconcile }) {
   }
 
   if (applied) {
-    const changed = OUTCOMES.filter(([outcome]) => countOf(applied.grants, outcome) > 0)
+    const lines = outcomeLines(applied)
     return (
       <Dialog
         title="Draft applied"
@@ -55,18 +64,13 @@ function CloseDraftDialog({ action, onClose, onReconcile }) {
         }
       >
         <p className="close-draft-text">“{name}” is applied and closed. You're back in live.</p>
-        {changed.length === 0 ? (
-          <p className="close-draft-text">It didn't change any permissions.</p>
+        {lines.length === 0 ? (
+          <p className="close-draft-text">It didn't change anything.</p>
         ) : (
           <ul className="close-draft-outcomes">
-            {changed.map(([outcome, label]) => {
-              const count = countOf(applied.grants, outcome)
-              return (
-                <li key={outcome}>
-                  {count} {count === 1 ? 'permission' : 'permissions'} {label}
-                </li>
-              )
-            })}
+            {lines.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
           </ul>
         )}
       </Dialog>

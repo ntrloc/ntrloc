@@ -50,6 +50,16 @@ public class DraftUserGroupsAdminController {
         return groups.groups().stream().map(g -> view(groups, g)).toList();
     }
 
+    // The live groups the draft deletes, where live has them, so a screen can show them and offer restore.
+    @GetMapping("/user-groups/deleted")
+    List<UserGroupView> deleted(DraftScope scope) {
+        requireAdmin(scope);
+        return draftUserService.deletedLiveGroups(scope.draftId()).stream().map(e -> {
+            UserGroupRow g = e.getKey();
+            return new UserGroupView(g.id(), g.name(), e.getValue(), g.parentId() == null ? List.of() : List.of(g.parentId()));
+        }).toList();
+    }
+
     @PostMapping("/user-groups")
     UserGroupView create(DraftScope scope, @RequestBody CreateUserGroupRequest body) {
         requireAdmin(scope);

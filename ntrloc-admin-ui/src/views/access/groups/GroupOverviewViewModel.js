@@ -6,12 +6,12 @@ import { groupHierarchy } from '../permissions/grantModel'
 const EVERYONE = 'everyone'
 
 // The group Info / Members tab's state and edits: its name and parent (edited together, with Save),
-// and its members. Groups and membership aren't drafted yet (Phase 2, docs/ntrloc-drafts-plan.md), so
-// in draft mode it's all read-only.
+// and its members. In a draft, the edits are the draft's.
 export function useGroupOverviewViewModel({ detail, allGroups, users, reload, onGroupsChanged }) {
   const { group, members } = detail
   const isEveryone = group.name === EVERYONE
-  const { inDraft } = useDraftMode()
+  const { draft, reloadChanges } = useDraftMode()
+  const draftId = draft?.id ?? null
   const parentId = group.parentIds[0] ?? null
 
   const [form, setForm] = useState(null)
@@ -24,6 +24,7 @@ export function useGroupOverviewViewModel({ detail, allGroups, users, reload, on
       await action()
       await reload()
       if (groupsChanged) await onGroupsChanged()
+      reloadChanges()
       return true
     } catch (e) {
       setError(e.message)
@@ -41,8 +42,8 @@ export function useGroupOverviewViewModel({ detail, allGroups, users, reload, on
     const name = form.name.trim()
     const saved = await run(
       async () => {
-        if (name !== group.name) await renameGroup(group.id, name)
-        if (form.parentId !== parentId) await setGroupParent(group.id, form.parentId)
+        if (name !== group.name) await renameGroup(draftId, group.id, name)
+        if (form.parentId !== parentId) await setGroupParent(draftId, group.id, form.parentId)
       },
       { groupsChanged: true },
     )
@@ -56,9 +57,8 @@ export function useGroupOverviewViewModel({ detail, allGroups, users, reload, on
     members,
     isEveryone,
     editing,
-    inDraft,
-    // 'everyone' is fixed, and nothing here is drafted yet.
-    canEdit: !isEveryone && !inDraft,
+    // 'everyone' is fixed.
+    canEdit: !isEveryone,
     name: editing ? form.name : group.name,
     setName: (name) => setForm((current) => ({ ...current, name })),
     parentName: nameOf(editing ? form.parentId : parentId),
@@ -74,7 +74,7 @@ export function useGroupOverviewViewModel({ detail, allGroups, users, reload, on
     save,
     error,
     joinableUsers: users.filter((u) => !memberIds.has(u.id)),
-    addMember: (userId) => run(() => addUserToGroup(userId, group.id)),
-    removeMember: (userId) => run(() => removeUserFromGroup(userId, group.id)),
+    addMember: (userId) => run(() => addUserToGroup(draftId, userId, group.id)),
+    removeMember: (userId) => run(() => removeUserFromGroup(draftId, userId, group.id)),
   }
 }

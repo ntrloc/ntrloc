@@ -222,16 +222,18 @@ class AccessUiTest extends AbstractUiIntegrationTest {
     }
 
     @Test
-    void everyoneCantBeDeleted_andNoGroupCanBeDeletedInADraft() {
+    void everyoneCantBeDeleted_liveOrInADraft() {
         newGroup("Kept");
         reload();
         access.section("Groups").select("everyone");
         assertThat(access.hasButton("Delete")).isFalse();
 
-        DraftSwitchPage.of(driver).startDraft("No deleting " + tag);
-        access.section("Groups").select("Kept " + tag);
+        DraftSwitchPage.of(driver).startDraft("Deleting " + tag);
+        access.section("Groups").select("everyone");
         assertThat(access.hasButton("Delete")).isFalse();
-        assertThat(access.hasButton("Add group")).isFalse();
+        access.select("Kept " + tag);
+        assertThat(access.hasButton("Delete")).isTrue();
+        assertThat(access.hasButton("Add group")).isTrue();
     }
 
     @Test
@@ -262,7 +264,7 @@ class AccessUiTest extends AbstractUiIntegrationTest {
     }
 
     @Test
-    void inADraft_whoUsersAndGroupsAreIsReadOnly_butGrantsAreDrafted() {
+    void inADraft_usersStayLive_butMembershipGroupsAndGrantsAreDrafted() {
         var user = newUser("Drafted");
         UUID group = newGroup("Drafted group");
         reload();
@@ -272,12 +274,13 @@ class AccessUiTest extends AbstractUiIntegrationTest {
         assertThat(access.draftNote()).contains("read-only here");
         assertThat(access.hasButton("Edit")).isFalse();
         assertThat(access.hasButton("New token")).isFalse();
-        access.detailTab("Group membership");
-        assertThat(access.draftNote()).contains("isn't drafted yet");
-        assertThat(access.tickable("Drafted group " + tag)).isFalse();
+        access.detailTab("Group membership").tick("Drafted group " + tag);
+        access.await().until(d -> access.ticked("Drafted group " + tag));
+        assertThat(userGroupStore.getUserGroupIdsForUser(user.id())).doesNotContain(group);
 
         access.section("Groups").select("Drafted group " + tag);
-        assertThat(access.draftNote()).contains("aren't drafted yet");
+        assertThat(access.draftNote()).isEmpty();
+        assertThat(access.hasButton("Edit")).isTrue();
         access.detailTab("Permission grants").toggleTypePill(THING_TYPE, "Create");
 
         assertThat(grants.getPermissions("USER_GROUP", group)).isEmpty();

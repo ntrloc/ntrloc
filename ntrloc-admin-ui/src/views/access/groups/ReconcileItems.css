@@ -1,0 +1,41 @@
+reconcile-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+reconcile-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: 6px;
+  background: var(--danger-bg);
+  color: var(--text-h);
+  font-size: 13px;
+
+  .modified-dot {
+    margin-top: 6px;
+  }
+}
+
+.reconcile-item-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.reconcile-item-origin {
+  color: var(--text);
+  font-size: 12px;
+}
+
+reconcile-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: -10px;
+}

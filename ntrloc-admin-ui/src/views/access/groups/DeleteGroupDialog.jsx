@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import Button from '../../../controls/button/Button'
 import Dialog from '../../../controls/dialog/Dialog'
+import { useDraftMode } from '../../../global/viewmodel/useDraftMode'
 import { deleteGroup } from '../AccessDelegate'
 import './DeleteGroupDialog.css'
 
 // Asks before deleting a group, saying what goes with it: its grants, and every subgroup below it with
 // theirs. Only a dialog that has listed subgroups asks the server to delete them (force); if some
-// appeared since, the server refuses and the dialog says so.
+// appeared since, the server refuses and the dialog says so. In a draft, the draft deletes them; they
+// can be restored there until it's applied.
 function DeleteGroupDialog({ group, subgroups, onCancel, onDeleted }) {
+  const { draft, reloadChanges, draftEdited } = useDraftMode()
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState(null)
 
@@ -15,7 +18,10 @@ function DeleteGroupDialog({ group, subgroups, onCancel, onDeleted }) {
     setDeleting(true)
     setError(null)
     try {
-      await deleteGroup(group.id, subgroups.length > 0)
+      await deleteGroup(draft?.id ?? null, group.id, subgroups.length > 0)
+      // In a draft the group stays listed, struck through, so everything showing it reads again.
+      if (draft) draftEdited()
+      else reloadChanges()
       onDeleted()
     } catch (e) {
       setError(e.message)
@@ -52,7 +58,9 @@ function DeleteGroupDialog({ group, subgroups, onCancel, onDeleted }) {
           </ul>
         </>
       )}
-      <p className="delete-group-consequence">This can't be undone.</p>
+      <p className="delete-group-consequence">
+        {draft ? 'In this draft only: live is unchanged until the draft is applied, and you can restore it here.' : "This can't be undone."}
+      </p>
       {error && (
         <p className="delete-group-error" role="alert">
           {error}

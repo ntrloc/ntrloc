@@ -10,7 +10,6 @@ function UserGroupsTab(props) {
   const vm = useUserGroupsViewModel(props)
   return (
     <user-groups-tab>
-      {vm.inDraft && <p className="access-draft-note">You're in a draft: group membership isn't drafted yet, so it's read-only here.</p>}
       {vm.error && <p className="user-dialog-message user-dialog-error">{vm.error}</p>}
       <CheckboxTree nodes={vm.groupTree} selectedKeys={vm.directGroupKeys} onChange={vm.setDirectGroups} selection={selectUpward} />
     </user-groups-tab>

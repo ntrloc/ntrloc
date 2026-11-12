@@ -6,6 +6,8 @@ import ModifiedDot from '../controls/modified-dot/ModifiedDot'
 import { reconcileChange } from '../global/delegate/DraftDelegate'
 import { useDraftMode } from '../global/viewmodel/useDraftMode'
 import { fetchGrantTargets, fetchGroups, fetchUsers } from '../views/access/AccessDelegate'
+import ReconcileItems from '../views/access/groups/ReconcileItems'
+import { useGroupReconcile } from '../views/access/groups/useGroupReconcile'
 import {
   describeNotice,
   describeNoticeOrigin,
@@ -23,20 +25,25 @@ const PRINCIPAL_GONE = new Set(['PRINCIPAL_DELETED', 'TARGET_DELETED'])
 //   depending on live as it is), or Preserve live change; one whose user, group or target is gone can only
 //   be dropped. The draft can't be applied until this list is empty.
 // - Changed in live: everything else live changed since the draft started, each acknowledged on its own.
-// Show goes to the place in Access it concerns.
+// Show goes to the place in Access it concerns. Group and membership items also show there, beside what
+// they're about; here they're listed with the same choices.
 function ReconcileDialog({ onClose }) {
-  const { draft, grantChanges, notices, reloadChanges, acknowledgeNotice } = useDraftMode()
+  const { draft, grantChanges, groupChanges, membershipChanges, notices, needsReconciling, reloadChanges, acknowledgeNotice, draftRevision } =
+    useDraftMode()
+  const groupReconcile = useGroupReconcile()
   const navigate = useNavigate()
   const [names, setNames] = useState(null)
   const [error, setError] = useState(null)
   const [working, setWorking] = useState(false)
   const items = grantChanges.filter((c) => c.reconcile.length > 0)
+  const groupItems = groupChanges.filter((c) => c.reconcile.length > 0)
+  const membershipItems = membershipChanges.filter((c) => c.reconcile.length > 0)
 
   useEffect(() => {
-    Promise.all([fetchGrantTargets(draft.id), fetchUsers(), fetchGroups()])
+    Promise.all([fetchGrantTargets(draft.id), fetchUsers(), fetchGroups(draft.id)])
       .then(([targets, users, groups]) => setNames({ targets, users, groups }))
       .catch((e) => setError(e.message))
-  }, [draft.id])
+  }, [draft.id, draftRevision])
 
   async function act(action) {
     setWorking(true)
@@ -74,11 +81,55 @@ function ReconcileDialog({ onClose }) {
         <>
           <h4 className="reconcile-heading">
             <ModifiedDot kind="reconcile" />
-            Needs reconciling ({items.length})
+            Needs reconciling ({needsReconciling})
           </h4>
-          {items.length === 0 ? (
+          {groupItems.length + membershipItems.length > 0 && (
+            <ul className="reconcile-rows">
+              {groupItems.map((change) => {
+                const group = names.groups.find((g) => g.id === change.groupId)
+                return (
+                  <li key={change.groupId} className="reconcile-group-row">
+                    <span className="reconcile-row-main">
+                      <span>Group {group?.name ?? change.name ?? 'deleted in live'}</span>
+                      <ReconcileItems
+                        reasons={change.reconcile}
+                        working={groupReconcile.working}
+                        names={names}
+                        onChoose={(reason, choice) => void groupReconcile.chooseForGroup(change.groupId, reason, choice)}
+                      />
+                    </span>
+                    {group && (
+                      <reconcile-actions>
+                        <Button variant="ghost-secondary" onClick={() => show({ kind: 'group', id: change.groupId, tab: 'overview' })}>
+                          Show
+                        </Button>
+                      </reconcile-actions>
+                    )}
+                  </li>
+                )
+              })}
+              {membershipItems.map((change) => (
+                <li key={`${change.groupId}|${change.userId}`} className="reconcile-group-row">
+                  <span className="reconcile-row-main">
+                    <span>
+                      {names.users.find((u) => u.id === change.userId)?.displayName ?? 'A deleted user'} added to{' '}
+                      {names.groups.find((g) => g.id === change.groupId)?.name ?? 'a deleted group'}
+                    </span>
+                    <ReconcileItems
+                      reasons={change.reconcile}
+                      working={groupReconcile.working}
+                      names={names}
+                      onChoose={(_, choice) => void groupReconcile.chooseForMembership(change, choice)}
+                    />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {groupReconcile.error && <p className="reconcile-error">{groupReconcile.error}</p>}
+          {needsReconciling === 0 ? (
             <p className="reconcile-muted">Nothing needs reconciling.</p>
-          ) : (
+          ) : items.length === 0 ? null : (
             <>
               <p className="reconcile-hint">
                 Live has changed underneath these changes since they were made, so they may no longer do what you tested.

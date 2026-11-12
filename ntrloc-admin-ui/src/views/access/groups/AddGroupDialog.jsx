@@ -2,11 +2,13 @@ import { useState } from 'react'
 import Button from '../../../controls/button/Button'
 import Dialog from '../../../controls/dialog/Dialog'
 import Input from '../../../controls/input/Input'
+import { useDraftMode } from '../../../global/viewmodel/useDraftMode'
 import { createGroup } from '../AccessDelegate'
 import './AddGroupDialog.css'
 
 // A new group under `parent` (the group selected in Access): asks only for its name.
 function AddGroupDialog({ parent, onCancel, onCreated }) {
+  const { draft, reloadChanges } = useDraftMode()
   const [name, setName] = useState('')
   const [touched, setTouched] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -18,7 +20,8 @@ function AddGroupDialog({ parent, onCancel, onCreated }) {
     setSaving(true)
     setSaveError(null)
     try {
-      const group = await createGroup(trimmed, parent.id)
+      const group = await createGroup(draft?.id ?? null, trimmed, parent.id)
+      reloadChanges()
       onCreated(group.id)
     } catch (e) {
       setSaveError(e.message)

@@ -316,6 +316,22 @@ class DraftGroupsIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void theGroupsADraftDeletes_areListedAsLiveHasThem() {
+        UUID parent = liveGroup(unique("deleted-parent"), root);
+        UUID child = liveGroup(unique("deleted-child"), parent);
+        userService.addMember(freshUser().id(), child);
+        delete(parent, true).expectStatus().isNoContent();
+
+        List<Map<String, Object>> deleted = (List<Map<String, Object>>) (List<?>) asAdmin(webTestClient.get().uri(draft() + "/user-groups/deleted"))
+                .exchange().expectStatus().isOk().expectBodyList(Map.class).returnResult().getResponseBody();
+
+        assertThat(deleted).extracting(g -> g.get("id")).containsExactlyInAnyOrder(parent.toString(), child.toString());
+        assertThat(deleted).filteredOn(g -> g.get("id").equals(child.toString())).singleElement()
+                .satisfies(g -> assertThat(g).containsEntry("memberCount", 1).containsEntry("parentIds", List.of(parent.toString())));
+    }
+
+    @Test
     void aGroupWithSubgroups_isDeletedInTheDraftOnlyWithForce() {
         UUID parent = liveGroup(unique("parent"), root);
         UUID child = liveGroup(unique("child"), parent);

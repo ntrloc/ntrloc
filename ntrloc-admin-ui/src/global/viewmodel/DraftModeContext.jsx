@@ -11,7 +11,8 @@ import { useAccessChanged } from './useAccessChanged'
 // view takes the draft's id from here and passes it to its delegate.
 //
 // What the draft changes (for an admin) is kept here too, for the modified dots that lead to each
-// change; a view that changes something in the draft calls reloadChanges.
+// change; a view that changes something in the draft calls reloadChanges, or draftEdited if other views
+// showing the draft's groups should read them again (draftRevision counts these).
 //
 // Who sees drafts at all: admins always, and may start them; a non-admin only while invited to at
 // least one, and never starts one.
@@ -22,8 +23,8 @@ const NO_CHANGES = []
 function loadChanges(draftId, latestRequest, setChanges) {
   const request = ++latestRequest.current
   fetchDraftChanges(draftId)
-    .then(({ grants, notices }) => {
-      if (request === latestRequest.current) setChanges({ draftId, grants, notices })
+    .then(({ groups, memberships, grants, notices }) => {
+      if (request === latestRequest.current) setChanges({ draftId, groups, memberships, grants, notices })
     })
     .catch(() => {})
 }
@@ -37,7 +38,8 @@ export function DraftModeProvider({ children }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   // The changes as last fetched, tagged with the draft they're for.
-  const [changes, setChanges] = useState({ draftId: null, grants: [], notices: [] })
+  const [changes, setChanges] = useState({ draftId: null, groups: [], memberships: [], grants: [], notices: [] })
+  const [draftRevision, setDraftRevision] = useState(0)
   const changesRequest = useRef(0)
 
   // Takes the drafts this user can work in. If this tab's draft is no longer among them (applied,
@@ -78,9 +80,22 @@ export function DraftModeProvider({ children }) {
   useEffect(reloadChanges, [reloadChanges])
   useAccessChanged(reloadChanges)
 
-  const grantChanges = changes.draftId === draftId ? changes.grants : NO_CHANGES
-  const notices = changes.draftId === draftId ? changes.notices : NO_CHANGES
-  const needsReconciling = grantChanges.filter((c) => c.reconcile.length > 0).length
+  const current = changes.draftId === draftId
+  const grantChanges = current ? changes.grants : NO_CHANGES
+  const groupChanges = current ? changes.groups : NO_CHANGES
+  const membershipChanges = current ? changes.memberships : NO_CHANGES
+  const notices = current ? changes.notices : NO_CHANGES
+  // Each reason is an item to settle; a grant change counts once, however many reasons it has.
+  const needsReconciling =
+    grantChanges.filter((c) => c.reconcile.length > 0).length +
+    [...groupChanges, ...membershipChanges].reduce((n, c) => n + c.reconcile.length, 0)
+  const anyChanges = grantChanges.length + groupChanges.length + membershipChanges.length > 0
+
+  // After a change to the draft's groups made where other views can't see it (e.g. the review dialog).
+  const draftEdited = useCallback(() => {
+    setDraftRevision((n) => n + 1)
+    reloadChanges()
+  }, [reloadChanges])
 
   // Acknowledges one live change; the notices are then read again.
   const acknowledgeNotice = useCallback(
@@ -99,7 +114,10 @@ export function DraftModeProvider({ children }) {
   // show.
   const startDraft = useCallback(
     async (name) => {
-      enterDraft(await createDraft({ name }))
+      const created = await createDraft({ name })
+      // Listed at once, not only once the list is next fetched.
+      setDrafts((current) => (current.some((d) => d.id === created.id) ? current : [...current, created]))
+      enterDraft(created)
     },
     [enterDraft],
   )
@@ -123,15 +141,19 @@ export function DraftModeProvider({ children }) {
       startDraft,
       leaveDraft,
       grantChanges,
+      groupChanges,
+      membershipChanges,
       // The sidebar's mark: 'reconcile' if live has moved underneath any change, 'modified' if there are any.
-      changesMark:
-        needsReconciling > 0 ? 'reconcile' : notices.length > 0 ? 'notice' : grantChanges.length > 0 ? 'modified' : null,
+      changesMark: needsReconciling > 0 ? 'reconcile' : notices.length > 0 ? 'notice' : anyChanges ? 'modified' : null,
       notices,
       acknowledgeNotice,
       needsReconciling,
       reloadChanges,
+      draftEdited,
+      draftRevision,
     }),
-    [draft, drafts, isAdmin, loading, error, loadDrafts, enterDraft, startDraft, leaveDraft, grantChanges, notices, needsReconciling, reloadChanges, acknowledgeNotice],
+    [draft, drafts, isAdmin, loading, error, loadDrafts, enterDraft, startDraft, leaveDraft, grantChanges, groupChanges, membershipChanges,
+      notices, needsReconciling, anyChanges, reloadChanges, draftEdited, draftRevision, acknowledgeNotice],
   )
   return <DraftModeContext.Provider value={value}>{children}</DraftModeContext.Provider>
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAccessChanged } from '../../../global/viewmodel/useAccessChanged'
+import { useDraftMode } from '../../../global/viewmodel/useDraftMode'
 import { fetchUserDetail } from '../AccessDelegate'
 
 // One user's detail: the user, their tokens and their direct groups, and which tab is showing.
@@ -9,6 +10,8 @@ export function useUserDetailViewModel(userId, initialTab) {
   const [detail, setDetail] = useState(null)
   const [status, setStatus] = useState('loading')
   const [tabKey, setTabKey] = useState(initialTab ?? 'overview')
+  const { draft, draftRevision } = useDraftMode()
+  const draftId = draft?.id ?? null
 
   const apply = useCallback((loaded) => {
     setDetail(loaded)
@@ -16,12 +19,12 @@ export function useUserDetailViewModel(userId, initialTab) {
   }, [])
 
   useEffect(() => {
-    fetchUserDetail(userId)
+    fetchUserDetail(draftId, userId)
       .then(apply)
       .catch(() => setStatus('error'))
-  }, [userId, apply])
+  }, [draftId, draftRevision, userId, apply])
 
-  const reload = useCallback(() => fetchUserDetail(userId).then(apply), [userId, apply])
+  const reload = useCallback(() => fetchUserDetail(draftId, userId).then(apply), [draftId, userId, apply])
 
   useAccessChanged(() => void reload().catch(() => setStatus('error')))
 

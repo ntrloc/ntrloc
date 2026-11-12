@@ -1,0 +1,12 @@
+deleted-group-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 10px;
+}
+
+.deleted-group-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
