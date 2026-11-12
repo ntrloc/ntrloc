@@ -202,10 +202,13 @@ CREATE UNIQUE INDEX security_user_email_lower_idx ON security_user (lower(email)
 -- parent; cycles are refused by UserStore.setParent. A group's members get its grants and those of
 -- every group above it. Changes to groups and memberships are recorded in config_change_log, which is
 -- also how a draft tells that a group it depends on has changed (docs/ntrloc-system-model-notes.md §13.3).
+-- The name check can be deferred to commit, so applying a draft can swap names or reuse a deleted
+-- group's name (DraftUserService.applyGroupChanges).
 CREATE TABLE security_user_group (
     id        UUID PRIMARY KEY DEFAULT uuidv7(),
-    name      TEXT NOT NULL UNIQUE,
+    name      TEXT NOT NULL,
     parent_id UUID REFERENCES security_user_group(id),
+    CONSTRAINT security_user_group_name_key UNIQUE (name) DEFERRABLE INITIALLY IMMEDIATE,
     CHECK (parent_id <> id)
 );
 CREATE UNIQUE INDEX security_user_group_one_root_idx ON security_user_group ((parent_id IS NULL)) WHERE parent_id IS NULL;
@@ -914,6 +917,8 @@ CREATE UNIQUE INDEX draft_grant_override_permission_idx ON draft_grant_override
 -- draft removes a live group. Otherwise name and parent_id are what the draft sets (NULL = unchanged),
 -- base_name and base_parent_id live's values when they were set, which conflicts compare against. A
 -- rename or move of a group the draft deletes is kept, hidden, so restoring it brings them back.
+-- deleted_touches: for a deleted live group, how many of live's changes to it (renamed, moved, members)
+-- there were since the draft started, when it was deleted or the delete last kept; more now is a conflict.
 CREATE TABLE draft_group_change (
     draft_id       UUID NOT NULL REFERENCES draft(id) ON DELETE CASCADE,
     group_id       UUID NOT NULL,
@@ -923,8 +928,10 @@ CREATE TABLE draft_group_change (
     base_name      TEXT,
     parent_id      UUID,
     base_parent_id UUID,
+    deleted_touches INTEGER,
     PRIMARY KEY (draft_id, group_id),
     CHECK (NOT (created AND deleted)),
+    CHECK (deleted = (deleted_touches IS NOT NULL)),
     CHECK (NOT created OR (name IS NOT NULL AND parent_id IS NOT NULL))
 );
 

@@ -121,17 +121,20 @@ public final class DraftGroups {
         return ancestors;
     }
 
-    /** The group and every group below it, by depth, the group first. */
+    /** The group and every group below it, by depth, the group first. Each once, even in a cycle live's moves made. */
     public List<UUID> subtreeOf(UUID groupId) {
         if (!groups.containsKey(groupId)) return List.of();
         Map<UUID, List<UUID>> children = new HashMap<>();
         groups.values().forEach(g -> {
             if (g.parentId() != null) children.computeIfAbsent(g.parentId(), k -> new ArrayList<>()).add(g.id());
         });
-        List<UUID> subtree = new ArrayList<>(List.of(groupId));
-        for (int i = 0; i < subtree.size(); i++) {
-            subtree.addAll(children.getOrDefault(subtree.get(i), List.of()));
+        Set<UUID> subtree = new LinkedHashSet<>(List.of(groupId));
+        List<UUID> queue = new ArrayList<>(subtree);
+        for (int i = 0; i < queue.size(); i++) {
+            for (UUID child : children.getOrDefault(queue.get(i), List.of())) {
+                if (subtree.add(child)) queue.add(child);
+            }
         }
-        return subtree;
+        return queue;
     }
 }

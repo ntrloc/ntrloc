@@ -270,7 +270,7 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
 
         webTestClient.post().uri("/api/drafts/" + draftId + "/apply").header(HttpHeaders.AUTHORIZATION, bearerTokenFor(ADMIN))
                 .exchange().expectStatus().isEqualTo(409)
-                .expectBody().jsonPath("$.message").isEqualTo("1 change needs reconciling with live before the draft can be applied");
+                .expectBody().jsonPath("$.message").isEqualTo("1 change needs reconciling with live before the draft can be applied: 1 in grants");
     }
 
     @Test

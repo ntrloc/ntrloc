@@ -7,6 +7,7 @@ import org.ntrloc.graph.db.partition.security.repository.UserGroupStore;
 import org.ntrloc.graph.db.partition.security.repository.UserGroupStore.UserGroupRow;
 import org.ntrloc.graph.db.partition.security.repository.UserStore.UserRow;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
@@ -70,6 +71,18 @@ public class UserService {
     @Transactional
     public void setParent(UUID groupId, UUID parentId) {
         userGroupStore.setParent(groupId, parentId);
+    }
+
+    /** Group names are checked once the caller's transaction ends, or at checkGroupNames: for applying a draft. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void deferGroupNameCheck() {
+        userGroupStore.deferNameCheck();
+    }
+
+    /** Checks the names written since deferGroupNameCheck, now; from here on each write is checked as it's made. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void checkGroupNames() {
+        userGroupStore.checkNames();
     }
 
     @Transactional

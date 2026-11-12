@@ -120,12 +120,9 @@ public class DraftService {
         requireAdmin(admin);
         var draft = draftStore.lockOpen(draftId).orElseThrow(DraftNotFoundException::new);
         // Checked here, inside apply's transaction, where it's current (docs/ntrloc-system-model-notes.md §13.4).
-        int unreconciled = draftAccessService.unreconciled(draftId).size();
-        if (unreconciled > 0) {
-            throw new DraftConflictException(unreconciled == 1
-                    ? "1 change needs reconciling with live before the draft can be applied"
-                    : unreconciled + " changes need reconciling with live before the draft can be applied");
-        }
+        int grantItems = draftAccessService.unreconciled(draftId).size();
+        int groupItems = draftUserService.unreconciled(draftId, draft.changelogPosition());
+        if (grantItems + groupItems > 0) throw new DraftConflictException(unreconciledMessage(groupItems, grantItems));
         var targets = grantsApi.targets();
         var deletedGroups = draftUserService.deletedGroups(draftId);
         List<DraftUserService.AppliedGroupChange> groups = new ArrayList<>();
@@ -153,6 +150,16 @@ public class DraftService {
                 "applied", grants.stream().filter(g -> g.outcome() == GrantOutcome.APPLIED).count(),
                 "alreadyLive", grants.stream().filter(g -> g.outcome() == GrantOutcome.ALREADY_LIVE).count()));
         return new AppliedDraft(closed, groups, memberships, grants);
+    }
+
+    // E.g. "3 changes need reconciling with live before the draft can be applied: 2 in groups, 1 in grants".
+    private static String unreconciledMessage(int groupItems, int grantItems) {
+        int total = groupItems + grantItems;
+        List<String> where = new ArrayList<>();
+        if (groupItems > 0) where.add(groupItems + " in groups");
+        if (grantItems > 0) where.add(grantItems + " in grants");
+        return (total == 1 ? "1 change needs" : total + " changes need") + " reconciling with live before the draft can be applied: "
+                + String.join(", ", where);
     }
 
     private GrantOutcome applyGrant(DraftGrantOverride override, GrantsApi.GrantTargets targets) {

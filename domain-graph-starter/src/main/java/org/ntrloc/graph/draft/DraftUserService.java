@@ -24,8 +24,17 @@ import java.util.UUID;
 @Service
 public class DraftUserService {
 
-    /** A group change as it stands against live now: fields live has caught up with are left out (null). */
-    public record GroupChange(UUID groupId, boolean created, boolean deleted, String name, String baseName, UUID parentId, UUID baseParentId) {}
+    /**
+     * A group change as it stands against live now: fields live has caught up with are left out (null).
+     * `reconcile`: why live has put it in question (step 2.5); empty if it hasn't.
+     */
+    public record GroupChange(UUID groupId, boolean created, boolean deleted, String name, String baseName, UUID parentId, UUID baseParentId,
+                              List<GroupReconciler.Reason> reconcile) {}
+
+    public record MembershipChange(UUID userId, UUID groupId, boolean member, List<GroupReconciler.Reason> reconcile) {}
+
+    /** The draft's group and membership changes, and the notices of live changes they don't stand in for. */
+    public record GroupChanges(List<GroupChange> groups, List<MembershipChange> memberships, List<DraftNotice> notices) {}
 
     public enum Outcome { APPLIED, ALREADY_LIVE }
 
@@ -39,9 +48,11 @@ public class DraftUserService {
     private final UserService userService;
     private final DraftAccessService draftAccessService;
     private final DraftChangeLog draftLog;
+    private final GroupReconciler reconciler;
 
     public DraftUserService(DraftGroupStore store, UserGroupStore liveGroups, UserStore liveUsers, UserService userService,
-                            DraftAccessService draftAccessService, DraftChangeLog draftLog) {
+                            DraftAccessService draftAccessService, DraftChangeLog draftLog, GroupReconciler reconciler) {
+        this.reconciler = reconciler;
         this.store = store;
         this.liveGroups = liveGroups;
         this.liveUsers = liveUsers;
@@ -71,6 +82,10 @@ public class DraftUserService {
 
     @Transactional
     public UserGroupRow renameGroup(DraftScope scope, UUID groupId, String name) {
+        return settling(scope, () -> rename(scope, groupId, name));
+    }
+
+    private UserGroupRow rename(DraftScope scope, UUID groupId, String name) {
         DraftGroups groups = open(scope);
         UserGroupRow group = requireGroup(groups, groupId, "UserGroup not found");
         String trimmed = requireName(name);
@@ -83,6 +98,10 @@ public class DraftUserService {
 
     @Transactional
     public UserGroupRow moveGroup(DraftScope scope, UUID groupId, UUID parentId) {
+        return settling(scope, () -> move(scope, groupId, parentId));
+    }
+
+    private UserGroupRow move(DraftScope scope, UUID groupId, UUID parentId) {
         DraftGroups groups = open(scope);
         UserGroupRow group = requireGroup(groups, groupId, "UserGroup not found");
         if (parentId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A parent group is required -- 'everyone' is the only top-level group");
@@ -108,15 +127,24 @@ public class DraftUserService {
      */
     @Transactional
     public void deleteGroup(DraftScope scope, UUID groupId, boolean force) {
-        DraftGroups groups = open(scope);
-        UserGroupRow group = requireGroup(groups, groupId, "UserGroup not found");
-        if (group.parentId() == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot delete the default group");
+        settling(scope, () -> {
+            DraftGroups groups = open(scope);
+            UserGroupRow group = requireGroup(groups, groupId, "UserGroup not found");
+            if (group.parentId() == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot delete the default group");
+            int subgroups = groups.subtreeOf(groupId).size() - 1;
+            if (subgroups > 0 && !force) throw new ResponseStatusException(HttpStatus.CONFLICT, new UserGroupStore.HasSubgroupsException(subgroups).getMessage());
+            deleteSubtree(scope, groups, groupId);
+            return null;
+        });
+    }
+
+    // The group and everything below it in the draft, deepest first.
+    private void deleteSubtree(DraftScope scope, DraftGroups groups, UUID groupId) {
         List<UUID> subtree = new ArrayList<>(groups.subtreeOf(groupId));
-        if (subtree.size() > 1 && !force) throw new ResponseStatusException(HttpStatus.CONFLICT, new UserGroupStore.HasSubgroupsException(subtree.size() - 1).getMessage());
         java.util.Collections.reverse(subtree);
         for (UUID id : subtree) {
             UserGroupRow deleting = groups.find(id).orElseThrow();
-            store.delete(scope.draftId(), id);
+            store.delete(scope.draftId(), id, groups.creates(id) ? 0 : reconciler.touches(id, scope.draft().changelogPosition()));
             if (groups.creates(id)) draftAccessService.dropGrants(scope.draftId(), id);
             Map<String, Object> before = new LinkedHashMap<>();
             before.put("name", deleting.name());
@@ -129,6 +157,10 @@ public class DraftUserService {
     /** Brings back a live group the draft deleted. Its parent must be there in the draft, and its name free. */
     @Transactional
     public UserGroupRow restoreGroup(DraftScope scope, UUID groupId) {
+        return settling(scope, () -> restore(scope, groupId));
+    }
+
+    private UserGroupRow restore(DraftScope scope, UUID groupId) {
         DraftGroups groups = open(scope);
         if (!groups.deletes(groupId)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "The draft doesn't delete this group");
         var change = store.groupChanges(scope.draftId()).stream().filter(c -> c.groupId().equals(groupId)).findFirst().orElseThrow();
@@ -155,6 +187,13 @@ public class DraftUserService {
     }
 
     private void setMembership(DraftScope scope, UUID userId, UUID groupId, boolean member) {
+        settling(scope, () -> {
+            writeMembership(scope, userId, groupId, member);
+            return null;
+        });
+    }
+
+    private void writeMembership(DraftScope scope, UUID userId, UUID groupId, boolean member) {
         DraftGroups groups = open(scope);
         UserGroupRow group = requireGroup(groups, groupId, "UserGroup not found");
         var user = liveUsers.findUserById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
@@ -192,37 +231,161 @@ public class DraftUserService {
 
     // --- What the draft changes, against live now ---
 
-    /** The draft's group changes that still differ from live (a deleted group: while live still has it). */
-    public List<GroupChange> groupChanges(UUID draftId) {
+    /**
+     * The draft's group and membership changes that still differ from live, each with why it needs
+     * reconciling (docs/ntrloc-system-model-notes.md §13.4.1); and the notices the reasons don't stand in for.
+     */
+    public GroupChanges changes(DraftScope scope) {
+        UUID draftId = scope.draftId();
+        DraftGroups groups = store.view(draftId);
+        List<DraftNotice> notices = draftAccessService.notices(scope);
+        List<GroupReconciler.Found> found = check(groups, draftId, scope.draft().changelogPosition());
+        Map<List<UUID>, List<GroupReconciler.Reason>> reasons = new LinkedHashMap<>();
+        for (var f : found) {
+            var r = f.reason();
+            var shown = new GroupReconciler.Reason(r.kind(), r.field(), r.draft(), r.live(), r.base(), r.groups(), r.choices(),
+                    notices.stream().filter(n -> f.covers().test(n.latest().elementKey())).toList());
+            reasons.computeIfAbsent(java.util.Arrays.asList(f.groupId(), f.userId()), k -> new ArrayList<>()).add(shown);
+        }
+        List<DraftNotice> uncovered = notices.stream().filter(n -> found.stream().noneMatch(f -> f.covers().test(n.latest().elementKey()))).toList();
+        return new GroupChanges(groupChanges(draftId, reasons), membershipChanges(groups, draftId, reasons), uncovered);
+    }
+
+    private List<GroupChange> groupChanges(UUID draftId, Map<List<UUID>, List<GroupReconciler.Reason>> reasons) {
         List<GroupChange> changes = new ArrayList<>();
         for (var c : store.groupChanges(draftId)) {
+            var reconcile = reasons.getOrDefault(java.util.Arrays.asList(c.groupId(), null), List.of());
             if (c.created()) {
-                changes.add(new GroupChange(c.groupId(), true, false, c.name(), null, c.parentId(), null));
+                changes.add(new GroupChange(c.groupId(), true, false, c.name(), null, c.parentId(), null, reconcile));
                 continue;
             }
             var live = liveGroups.findUserGroupById(c.groupId());
             if (live.isEmpty()) {
-                // Live deleted it: what's left of the change is for reconciliation (step 2.5).
-                if (!c.deleted()) changes.add(new GroupChange(c.groupId(), false, false, c.name(), c.baseName(), c.parentId(), c.baseParentId()));
+                // Live deleted it: a delete is already done; anything else is for reconciling.
+                if (!c.deleted()) changes.add(new GroupChange(c.groupId(), false, false, c.name(), c.baseName(), c.parentId(), c.baseParentId(), reconcile));
                 continue;
             }
             boolean renamed = c.name() != null && !c.name().equals(live.get().name());
             boolean moved = c.parentId() != null && !c.parentId().equals(live.get().parentId());
             if (c.deleted() || renamed || moved) {
                 changes.add(new GroupChange(c.groupId(), false, c.deleted(), renamed ? c.name() : null, renamed ? c.baseName() : null,
-                        moved ? c.parentId() : null, moved ? c.baseParentId() : null));
+                        moved ? c.parentId() : null, moved ? c.baseParentId() : null, reconcile));
             }
         }
         return changes;
     }
 
-    /** The draft's membership changes that still differ from live. */
-    public List<DraftMembershipChange> membershipChanges(UUID draftId) {
-        DraftGroups groups = store.view(draftId);
+    private List<MembershipChange> membershipChanges(DraftGroups groups, UUID draftId, Map<List<UUID>, List<GroupReconciler.Reason>> reasons) {
         return store.membershipChanges(draftId).stream()
                 .filter(m -> !groups.deletes(m.groupId()))
                 .filter(m -> groups.creates(m.groupId()) || m.member() != isLiveMember(m.userId(), m.groupId()))
+                .map(m -> new MembershipChange(m.userId(), m.groupId(), m.member(),
+                        reasons.getOrDefault(java.util.Arrays.asList(m.groupId(), m.userId()), List.of())))
                 .toList();
+    }
+
+    /** How many group and membership changes need reconciling: checked afresh, for apply's transaction. */
+    public int unreconciled(UUID draftId, long since) {
+        return check(store.build(draftId), draftId, since).size();
+    }
+
+    private List<GroupReconciler.Found> check(DraftGroups groups, UUID draftId, long since) {
+        return reconciler.check(groups, store.groupChanges(draftId), store.membershipChanges(draftId), since);
+    }
+
+    // --- Reconciling (docs/ntrloc-system-model-notes.md §13.4.1). Editing the change is the third way. ---
+
+    /** Settles what's in question about one field of a group change (`field` null: the change as a whole). */
+    @Transactional
+    public void reconcileGroup(DraftScope scope, UUID groupId, String field, GroupReconciler.Resolution resolution) {
+        settling(scope, () -> {
+            DraftGroups groups = open(scope);
+            long since = scope.draft().changelogPosition();
+            List<GroupReconciler.Reason> open = check(groups, scope.draftId(), since).stream()
+                    .filter(f -> f.userId() == null && groupId.equals(f.groupId()) && Objects.equals(field, f.reason().field()))
+                    .map(GroupReconciler.Found::reason).toList();
+            if (open.stream().noneMatch(r -> r.choices().contains(resolution))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, open.isEmpty() ? "Nothing to reconcile there" : "That isn't one of the choices there");
+            }
+            UUID draftId = scope.draftId();
+            var live = liveGroups.findUserGroupById(groupId);
+            switch (resolution) {
+                case KEEP -> {
+                    switch (field) {
+                        case "name" -> store.rebaseName(draftId, groupId, live.orElseThrow().name());
+                        case "parent" -> store.rebaseParent(draftId, groupId, live.orElseThrow().parentId());
+                        default -> store.rebaseDelete(draftId, groupId, reconciler.touches(groupId, since));
+                    }
+                }
+                case USE_LIVE, ABANDON -> {
+                    if (field == null) store.discard(draftId, groupId);
+                    else if (field.equals("name")) store.setName(draftId, groupId, live.orElseThrow().name(), live.orElseThrow().name());
+                    else if (field.equals("parent")) store.setParent(draftId, groupId, live.orElseThrow().parentId(), live.orElseThrow().parentId());
+                    else if (field.equals("created")) deleteSubtree(scope, groups, groupId);
+                    else restoreWithAncestors(scope, groups, groupId);
+                }
+                case DELETE_SUBGROUPS -> open.stream().filter(r -> r.kind() == GroupReconciler.Kind.NEW_SUBGROUPS)
+                        .flatMap(r -> r.groups().stream()).forEach(sub -> deleteSubtree(scope, groups, sub.id()));
+            }
+            Map<String, Object> after = new LinkedHashMap<>();
+            after.put("field", field);
+            after.put("resolution", resolution.name());
+            draftLog.append(draftId, "group.reconciled", "group:" + groupId, List.of(groupId), null, after);
+            return null;
+        });
+    }
+
+    /** Drops a membership change live has orphaned (deleting its user or group): the only way to settle it. */
+    @Transactional
+    public void reconcileMembership(DraftScope scope, UUID userId, UUID groupId, GroupReconciler.Resolution resolution) {
+        settling(scope, () -> {
+            DraftGroups groups = open(scope);
+            boolean open = check(groups, scope.draftId(), scope.draft().changelogPosition()).stream()
+                    .anyMatch(f -> groupId.equals(f.groupId()) && userId.equals(f.userId()) && f.reason().choices().contains(resolution));
+            if (!open) throw new ResponseStatusException(HttpStatus.CONFLICT, "Nothing to reconcile there with that choice");
+            store.discardMembership(scope.draftId(), userId, groupId);
+            draftLog.append(scope.draftId(), "membership.reconciled", "membership:" + groupId + ":" + userId, List.of(userId, groupId), null,
+                    Map.of("resolution", resolution.name()));
+            return null;
+        });
+    }
+
+    // Brings back a group the draft deletes, and the deleted groups above it, so live's new subgroups have a
+    // place: top first.
+    private void restoreWithAncestors(DraftScope scope, DraftGroups groups, UUID groupId) {
+        Map<UUID, DraftGroupChange> changes = new LinkedHashMap<>();
+        store.groupChanges(scope.draftId()).forEach(c -> changes.put(c.groupId(), c));
+        List<UserGroupRow> chain = new ArrayList<>();
+        for (UUID id = groupId; id != null && groups.deletes(id); ) {
+            var change = changes.get(id);
+            var live = liveGroup(id);
+            var restored = new UserGroupRow(id, change.name() != null ? change.name() : live.name(), change.parentId() != null ? change.parentId() : live.parentId());
+            chain.addFirst(restored);
+            id = restored.parentId();
+        }
+        for (var restored : chain) {
+            requireNameFree(groups, restored.name(), restored.id());
+            store.restore(scope.draftId(), restored.id());
+            draftLog.append(scope.draftId(), "group.restored", "group:" + restored.id(), List.of(restored.id()), null, Map.of("name", restored.name()));
+        }
+    }
+
+    // Runs a change to the draft; live changes it settles are acknowledged with it (§13.4.1: the admin isn't
+    // asked twice). Settled: covered by a reason before, by none after.
+    private <T> T settling(DraftScope scope, java.util.function.Supplier<T> change) {
+        if (!store.holdOpen(scope.draftId())) throw new DraftService.DraftNotFoundException();
+        long since = scope.draft().changelogPosition();
+        var before = check(store.view(scope.draftId()), scope.draftId(), since);
+        T result = change.get();
+        if (before.isEmpty()) return result;
+        var after = check(store.build(scope.draftId()), scope.draftId(), since);
+        for (var notice : draftAccessService.notices(scope)) {
+            String key = notice.latest().elementKey();
+            if (before.stream().anyMatch(f -> f.covers().test(key)) && after.stream().noneMatch(f -> f.covers().test(key))) {
+                draftAccessService.acknowledge(scope, key, notice.latest().seq());
+            }
+        }
+        return result;
     }
 
     private boolean isLiveMember(UUID userId, UUID groupId) {
@@ -233,10 +396,13 @@ public class DraftUserService {
 
     /**
      * Writes the draft's renames, new groups and moves to live, in an order that keeps live valid at every
-     * step: renames first (freeing names), new groups parents first, then moves by their depth in the draft
-     * (each parent already in its final place). Memberships come next, deletions after the grants.
+     * step: renames, new groups parents first, then moves by their depth in the draft (each parent already
+     * in its final place). Memberships come next, deletions after the grants.
      */
     public List<AppliedGroupChange> applyGroupChanges(UUID draftId) {
+        // Names are checked once everything is written (applyDeletes), so renames can swap names or take a
+        // deleted group's.
+        userService.deferGroupNameCheck();
         DraftGroups groups = store.build(draftId);
         List<DraftGroupChange> changes = store.groupChanges(draftId);
         List<AppliedGroupChange> applied = new ArrayList<>();
@@ -289,6 +455,7 @@ public class DraftUserService {
                     }
                     applied.add(new AppliedGroupChange(c.groupId(), "deleted", already ? Outcome.ALREADY_LIVE : Outcome.APPLIED));
                 });
+        userService.checkGroupNames();
         return applied;
     }
 

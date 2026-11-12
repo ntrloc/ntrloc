@@ -183,7 +183,7 @@ class DraftApplyIntegrationTest extends AbstractIntegrationTest {
         accessService.deleteMarker(deletedMarker);
 
         post("apply", ADMIN).expectStatus().isEqualTo(409)
-                .expectBody().jsonPath("$.message").isEqualTo("2 changes need reconciling with live before the draft can be applied");
+                .expectBody().jsonPath("$.message").isEqualTo("2 changes need reconciling with live before the draft can be applied: 2 in grants");
         assertThat(live(keptGroup, createProducts())).isFalse();
 
         reconcile(deletedGroup, createProducts(), "USE_LIVE");

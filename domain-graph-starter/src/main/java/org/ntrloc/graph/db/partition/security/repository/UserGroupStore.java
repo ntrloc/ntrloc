@@ -101,6 +101,16 @@ public class UserGroupStore {
         return new UserGroupRow(id, name, parentId);
     }
 
+    // Group names are unique, checked at each write unless deferred (to the end of the transaction, or
+    // until checkNames): applying a draft swaps names or reuses a deleted group's mid-way.
+    public void deferNameCheck() {
+        jdbcClient.sql("SET CONSTRAINTS security_user_group_name_key DEFERRED").update();
+    }
+
+    public void checkNames() {
+        jdbcClient.sql("SET CONSTRAINTS security_user_group_name_key IMMEDIATE").update();
+    }
+
     // Moves the group under newParentId. Refused if that would put the group under itself.
     public void setParent(UUID groupId, UUID newParentId) {
         accessCache.changed();

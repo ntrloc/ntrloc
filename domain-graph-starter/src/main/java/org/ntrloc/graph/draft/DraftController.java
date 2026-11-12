@@ -46,10 +46,19 @@ public class DraftController {
     /** `reconcile`: why live has moved underneath this change since it was made; empty if it hasn't. */
     public record GrantChangeView(PrincipalRef principal, Permission permission, boolean value, List<GrantDependencyTracker.Reason> reconcile) {}
 
-    public record ReconcileRequest(PrincipalRef principal, Permission permission, DraftAccessService.Resolution resolution) {}
+    /**
+     * One item to settle, and how. A grant: principal and permission (KEEP or USE_LIVE). A group change:
+     * groupId and field (name, parent, created, deleted; none for the change as a whole). A membership:
+     * groupId and userId. Each reason lists its choices.
+     */
+    public record ReconcileRequest(PrincipalRef principal, Permission permission, UUID groupId, String field, UUID userId,
+                                   GroupReconciler.Resolution resolution) {}
 
-    /** What the draft changes against live, by family; and the live changes it has yet to acknowledge. */
-    public record DraftChangesView(List<DraftUserService.GroupChange> groups, List<DraftMembershipChange> memberships,
+    /**
+     * What the draft changes against live, by family; and the live changes it has yet to acknowledge, less
+     * those a group or membership change's reasons show instead.
+     */
+    public record DraftChangesView(List<DraftUserService.GroupChange> groups, List<DraftUserService.MembershipChange> memberships,
                                    List<GrantChangeView> grants, List<DraftNotice> notices) {}
 
     public record AcknowledgeRequest(String elementKey, Long seq) {}
@@ -105,10 +114,11 @@ public class DraftController {
     @GetMapping("/{draftId}/changes")
     DraftChangesView changes(DraftScope scope) {
         GrantsApi.requireAdmin(scope.user());
-        return new DraftChangesView(draftUserService.groupChanges(scope.draftId()), draftUserService.membershipChanges(scope.draftId()),
+        var groups = draftUserService.changes(scope);
+        return new DraftChangesView(groups.groups(), groups.memberships(),
                 draftAccessService.changes(scope.draftId()).stream()
                 .map(c -> new GrantChangeView(principalOf(c.override()), c.override().permission(), c.override().value(), c.reconcile())).toList(),
-                draftAccessService.notices(scope));
+                groups.notices());
     }
 
     // Acknowledging a live change the draft was told about (docs/ntrloc-system-model-notes.md §13.6), admins only.
@@ -133,10 +143,22 @@ public class DraftController {
     @PostMapping("/{draftId}/reconcile")
     ResponseEntity<Void> reconcile(DraftScope scope, @RequestBody ReconcileRequest body) {
         GrantsApi.requireAdmin(scope.user());
-        if (body.principal() == null || body.permission() == null || body.resolution() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "principal, permission and resolution are required");
+        if (body.resolution() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "resolution is required");
+        if (body.groupId() != null && body.userId() != null) {
+            draftUserService.reconcileMembership(scope, body.userId(), body.groupId(), body.resolution());
+        } else if (body.groupId() != null) {
+            draftUserService.reconcileGroup(scope, body.groupId(), body.field(), body.resolution());
+        } else {
+            if (body.principal() == null || body.permission() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "principal and permission, or groupId, are required");
+            }
+            var resolution = switch (body.resolution()) {
+                case KEEP -> DraftAccessService.Resolution.KEEP;
+                case USE_LIVE -> DraftAccessService.Resolution.USE_LIVE;
+                default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A grant change is kept, or live's value taken");
+            };
+            draftAccessService.reconcile(scope, GrantsApi.principalType(body.principal()), body.principal().id(), body.permission(), resolution);
         }
-        draftAccessService.reconcile(scope, GrantsApi.principalType(body.principal()), body.principal().id(), body.permission(), body.resolution());
         return ResponseEntity.noContent().build();
     }
 

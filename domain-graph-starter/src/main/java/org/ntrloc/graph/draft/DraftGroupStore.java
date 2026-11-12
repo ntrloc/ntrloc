@@ -58,12 +58,13 @@ public class DraftGroupStore implements DraftGroupStoreReader {
     @Override
     public List<DraftGroupChange> groupChanges(UUID draftId) {
         return jdbcClient.sql("""
-                SELECT group_id, created, deleted, name, base_name, parent_id, base_parent_id
+                SELECT group_id, created, deleted, name, base_name, parent_id, base_parent_id, deleted_touches
                 FROM draft_group_change WHERE draft_id = :draftId
                 """)
                 .param(PARAM_DRAFT_ID, draftId)
                 .query((rs, _) -> new DraftGroupChange(rs.getObject("group_id", UUID.class), rs.getBoolean("created"), rs.getBoolean("deleted"),
-                        rs.getString("name"), rs.getString("base_name"), rs.getObject("parent_id", UUID.class), rs.getObject("base_parent_id", UUID.class)))
+                        rs.getString("name"), rs.getString("base_name"), rs.getObject("parent_id", UUID.class), rs.getObject("base_parent_id", UUID.class),
+                        rs.getObject("deleted_touches", Integer.class)))
                 .list();
     }
 
@@ -119,8 +120,11 @@ public class DraftGroupStore implements DraftGroupStoreReader {
         changed(draftId);
     }
 
-    /** The draft removes the group: a live one is marked deleted; one the draft makes goes, with its memberships. */
-    public void delete(UUID draftId, UUID groupId) {
+    /**
+     * The draft removes the group: a live one is marked deleted, with live's changes to it so far (`touches`);
+     * one the draft makes goes, with its memberships.
+     */
+    public void delete(UUID draftId, UUID groupId, int touches) {
         int removed = jdbcClient.sql("DELETE FROM draft_group_change WHERE draft_id = :draftId AND group_id = :groupId AND created")
                 .param(PARAM_DRAFT_ID, draftId).param(PARAM_GROUP_ID, groupId).update();
         if (removed > 0) {
@@ -128,18 +132,52 @@ public class DraftGroupStore implements DraftGroupStoreReader {
                     .param(PARAM_DRAFT_ID, draftId).param(PARAM_GROUP_ID, groupId).update();
         } else {
             jdbcClient.sql("""
-                    INSERT INTO draft_group_change (draft_id, group_id, deleted) VALUES (:draftId, :groupId, TRUE)
-                    ON CONFLICT (draft_id, group_id) DO UPDATE SET deleted = TRUE
-                    """).param(PARAM_DRAFT_ID, draftId).param(PARAM_GROUP_ID, groupId).update();
+                    INSERT INTO draft_group_change (draft_id, group_id, deleted, deleted_touches) VALUES (:draftId, :groupId, TRUE, :touches)
+                    ON CONFLICT (draft_id, group_id) DO UPDATE SET deleted = TRUE, deleted_touches = EXCLUDED.deleted_touches
+                    """).param(PARAM_DRAFT_ID, draftId).param(PARAM_GROUP_ID, groupId).param("touches", touches).update();
         }
         changed(draftId);
     }
 
     /** A live group the draft deleted is back, with whatever else the draft changed about it. */
     public void restore(UUID draftId, UUID groupId) {
-        jdbcClient.sql("UPDATE draft_group_change SET deleted = FALSE WHERE draft_id = :draftId AND group_id = :groupId")
+        jdbcClient.sql("UPDATE draft_group_change SET deleted = FALSE, deleted_touches = NULL WHERE draft_id = :draftId AND group_id = :groupId")
                 .param(PARAM_DRAFT_ID, draftId).param(PARAM_GROUP_ID, groupId).update();
         removeIfUnchanged(draftId, groupId);
+        changed(draftId);
+    }
+
+    // --- Reconciling (step 2.5): a change kept now starts from live as it is ---
+
+    public void rebaseName(UUID draftId, UUID groupId, String liveName) {
+        rebase(draftId, groupId, "base_name = :value", liveName);
+    }
+
+    public void rebaseParent(UUID draftId, UUID groupId, UUID liveParentId) {
+        rebase(draftId, groupId, "base_parent_id = :value", liveParentId);
+    }
+
+    public void rebaseDelete(UUID draftId, UUID groupId, int touches) {
+        rebase(draftId, groupId, "deleted_touches = :value", touches);
+    }
+
+    private void rebase(UUID draftId, UUID groupId, String set, Object value) {
+        jdbcClient.sql("UPDATE draft_group_change SET " + set + " WHERE draft_id = :draftId AND group_id = :groupId")
+                .param(PARAM_DRAFT_ID, draftId).param(PARAM_GROUP_ID, groupId).param("value", value).update();
+        changed(draftId);
+    }
+
+    /** The draft no longer changes the group at all (live deleted it). */
+    public void discard(UUID draftId, UUID groupId) {
+        jdbcClient.sql("DELETE FROM draft_group_change WHERE draft_id = :draftId AND group_id = :groupId")
+                .param(PARAM_DRAFT_ID, draftId).param(PARAM_GROUP_ID, groupId).update();
+        changed(draftId);
+    }
+
+    /** The draft no longer changes this membership (live deleted the user or group). */
+    public void discardMembership(UUID draftId, UUID userId, UUID groupId) {
+        jdbcClient.sql("DELETE FROM draft_membership_change WHERE draft_id = :draftId AND user_id = :userId AND group_id = :groupId")
+                .param(PARAM_DRAFT_ID, draftId).param("userId", userId).param(PARAM_GROUP_ID, groupId).update();
         changed(draftId);
     }
 

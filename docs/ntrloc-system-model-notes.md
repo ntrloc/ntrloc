@@ -930,6 +930,13 @@ to P3.
 **Notices:** where a conflict covers an element, the red item takes the place of its blue notice, and
 settling the conflict also acknowledges the notice, so the admin isn't asked twice.
 
+**Agreed (2026-11-12):** live changing a group the draft deletes (renamed, moved, its members) is a
+conflict: Keep draft change deletes it anyway; Preserve live change restores it. Live adding a subgroup
+under it is one too: "Delete its new subgroups too", or Preserve live change (restoring it and the deleted
+groups above it). A group whose name and parent both conflict has two items, settled separately. Changes
+no longer valid (parent gone, cycle, name taken) offer another value or **Abandon draft change**, not
+Keep/Preserve. **Built** (plan step 2.5).
+
 ### 13.5 What this reopens elsewhere
 
 - **"Refuse live changes where a draft reaches"** (schema evolution notes §5.4; system change preview
